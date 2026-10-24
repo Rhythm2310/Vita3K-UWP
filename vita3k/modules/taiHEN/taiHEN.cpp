@@ -30,7 +30,12 @@
 TRACY_MODULE_NAME(taiHEN);
 
 // substitute library for instruction relocation (from comex/substitute, LGPLv2.1+)
+#if __has_include(<substitute_api.h>)
 #include <substitute_api.h>
+#define HAVE_SUBSTITUTE 1
+#else
+#define HAVE_SUBSTITUTE 0
+#endif
 
 #include <cstring>
 #include <map>
@@ -315,6 +320,7 @@ static void write_arm_stub(uint32_t *dest, Address target) {
 // Returns hook UID on success, TAI_ERROR_HOOK_ERROR if function can't be hooked.
 static SceUID create_inline_hook(EmuEnvState &emuenv, TaihenState *state, SceUID thread_id,
     Address func_addr, Address hook_func, uint32_t func_nid = 0) {
+#if HAVE_SUBSTITUTE
     bool is_thumb = (func_addr & 1) != 0;
     Address code_addr = func_addr & ~1u;
     const void *code_host = Ptr<const void>(code_addr).get(emuenv.mem);
@@ -426,6 +432,10 @@ static SceUID create_inline_hook(EmuEnvState &emuenv, TaihenState *state, SceUID
     LOG_DEBUG("taiHEN inline hook: {} bytes patched at {} ({})",
         copy_size, log_hex(code_addr), is_thumb ? "Thumb" : "ARM");
     return new_uid;
+#else
+    LOG_DEBUG("taiHEN inline hook: substitute not available, falling back to stub patch");
+    return TAI_ERROR_HOOK_ERROR;
+#endif
 }
 
 // Create an EXPORT hook using inline hooking (patch function prologue).
