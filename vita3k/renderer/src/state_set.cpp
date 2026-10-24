@@ -93,28 +93,43 @@ COMMAND_SET_STATE(viewport) {
     render_context->record.viewport_flat = flat;
 
     const float previous_flip_y = render_context->record.viewport_flip[1];
-    if (flat) {
-        const float xOffset = helper.pop<float>();
-        const float yOffset = helper.pop<float>();
+    if (!flat) {
+        float factor = 1.0f;
+        const bool has_msaa = (render_context->current_render_target && render_context->current_render_target->multisample_mode);
+        const bool has_downscale = render_context->record.color_surface.downscale;
+        if (has_msaa && !has_downscale)
+            factor = 2.0f;
+        else if (!has_msaa && has_downscale)
+            factor = 1.0f;
+
+        const float xOffset = helper.pop<float>() * factor;
+        const float yOffset = helper.pop<float>() * factor;
         const float zOffset = helper.pop<float>();
-        const float xScale = helper.pop<float>();
-        const float yScale = helper.pop<float>();
+        const float xScale = helper.pop<float>() * factor;
+        const float yScale = helper.pop<float>() * factor;
         const float zScale = helper.pop<float>();
 
-        render_context->record.viewport_real[0] = xOffset;
-        render_context->record.viewport_real[1] = yOffset;
-        render_context->record.viewport_real[2] = zOffset;
-        render_context->record.viewport_real[3] = xScale;
-        render_context->record.viewport_real[4] = yScale;
-        render_context->record.viewport_real[5] = zScale;
+        const float ymin = yOffset + yScale;
+        const float ymax = yOffset - yScale - 1;
 
-        render_context->record.viewport_flip[0] = (xScale < 0.0f) ? -1.0f : 1.0f;
-        render_context->record.viewport_flip[1] = (yScale < 0.0f) ? -1.0f : 1.0f;
+        render_context->record.viewport_flip[0] = 1.0f;
+        render_context->record.viewport_flip[1] = (ymin < ymax) ? -1.0f : 1.0f;
+        render_context->record.viewport_flip[2] = 1.0f;
+        render_context->record.viewport_flip[3] = 1.0f;
+        render_context->record.z_offset = zOffset;
+        render_context->record.z_scale = zScale;
 
         if (renderer.current_backend == Backend::D3D12) {
             d3d12::sync_viewport_real(*reinterpret_cast<d3d12::D3D12Context *>(render_context), xOffset, yOffset, zOffset, xScale, yScale, zScale);
         }
     } else {
+        render_context->record.viewport_flip[0] = 1.0f;
+        render_context->record.viewport_flip[1] = -1.0f;
+        render_context->record.viewport_flip[2] = 1.0f;
+        render_context->record.viewport_flip[3] = 1.0f;
+        render_context->record.z_offset = 0.0f;
+        render_context->record.z_scale = 1.0f;
+
         if (renderer.current_backend == Backend::D3D12) {
             d3d12::sync_viewport_flat(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
         }
@@ -122,29 +137,36 @@ COMMAND_SET_STATE(viewport) {
 
     if (previous_flip_y != render_context->record.viewport_flip[1]) {
         if (renderer.current_backend == Backend::D3D12) {
-            d3d12::sync_point_line_width(*reinterpret_cast<d3d12::D3D12Context *>(render_context), true);
-            d3d12::sync_point_line_width(*reinterpret_cast<d3d12::D3D12Context *>(render_context), false);
+            d3d12::sync_clipping(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
         }
     }
 }
 
 COMMAND_SET_STATE(depth_bias) {
     TRACY_FUNC_COMMANDS_SET_STATE(depth_bias);
+    const bool is_front = helper.pop<bool>();
     const int factor = helper.pop<int>();
-    const int units = helper.pop<int>();
+    const int unit = helper.pop<int>();
 
-    render_context->record.depth_bias_factor = factor;
-    render_context->record.depth_bias_units = units;
+    render_context->record.depth_bias_unit = unit;
+    render_context->record.depth_bias_slope = factor;
 
     if (renderer.current_backend == Backend::D3D12) {
-        d3d12::sync_depth_bias(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
+        if (is_front)
+            d3d12::sync_depth_bias(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
     }
 }
 
 COMMAND_SET_STATE(depth_func) {
     TRACY_FUNC_COMMANDS_SET_STATE(depth_func);
+    const bool is_front = helper.pop<bool>();
     const SceGxmDepthFunc depth_func = helper.pop<SceGxmDepthFunc>();
-    render_context->record.depth_func = depth_func;
+
+    if (is_front) {
+        render_context->record.front_depth_func = depth_func;
+    } else {
+        render_context->record.back_depth_func = depth_func;
+    }
 
     if (renderer.current_backend == Backend::D3D12) {
         d3d12::sync_depth_data(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
@@ -153,8 +175,13 @@ COMMAND_SET_STATE(depth_func) {
 
 COMMAND_SET_STATE(depth_write_enable) {
     TRACY_FUNC_COMMANDS_SET_STATE(depth_write_enable);
+    const bool is_front = helper.pop<bool>();
     const SceGxmDepthWriteMode mode = helper.pop<SceGxmDepthWriteMode>();
-    render_context->record.depth_write_mode = mode;
+
+    if (is_front)
+        render_context->record.front_depth_write_mode = mode;
+    else
+        render_context->record.back_depth_write_mode = mode;
 
     if (renderer.current_backend == Backend::D3D12) {
         d3d12::sync_depth_data(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
@@ -163,8 +190,13 @@ COMMAND_SET_STATE(depth_write_enable) {
 
 COMMAND_SET_STATE(polygon_mode) {
     TRACY_FUNC_COMMANDS_SET_STATE(polygon_mode);
-    const SceGxmPolygonMode polygon_mode = helper.pop<SceGxmPolygonMode>();
-    render_context->record.polygon_mode = polygon_mode;
+    const bool is_front = helper.pop<bool>();
+    const SceGxmPolygonMode mode = helper.pop<SceGxmPolygonMode>();
+
+    if (is_front)
+        render_context->record.front_polygon_mode = mode;
+    else
+        render_context->record.back_polygon_mode = mode;
 
     if (renderer.current_backend == Backend::D3D12) {
         d3d12::refresh_pipeline(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
@@ -177,9 +209,7 @@ COMMAND_SET_STATE(point_line_width) {
     const uint32_t width = helper.pop<uint32_t>();
 
     if (is_front)
-        render_context->record.point_line_width_front = width;
-    else
-        render_context->record.point_line_width_back = width;
+        render_context->record.line_width = width;
 
     if (renderer.current_backend == Backend::D3D12) {
         d3d12::sync_point_line_width(*reinterpret_cast<d3d12::D3D12Context *>(render_context), is_front);
@@ -188,34 +218,120 @@ COMMAND_SET_STATE(point_line_width) {
 
 COMMAND_SET_STATE(stencil_func) {
     TRACY_FUNC_COMMANDS_SET_STATE(stencil_func);
-    const bool is_back = helper.pop<bool>();
+    const bool is_front = helper.pop<bool>();
+    GxmStencilStateOp &stencil_state_op = is_front ? render_context->record.front_stencil_state_op : render_context->record.back_stencil_state_op;
+    GxmStencilStateValues &stencil_state_vals = is_front ? render_context->record.front_stencil_state_values : render_context->record.back_stencil_state_values;
 
-    if (is_back) {
-        render_context->record.stencil_func_back = helper.pop<SceGxmStencilFunc>();
-        render_context->record.stencil_fail_back = helper.pop<SceGxmStencilOp>();
-        render_context->record.stencil_depth_fail_back = helper.pop<SceGxmStencilOp>();
-        render_context->record.stencil_depth_pass_back = helper.pop<SceGxmStencilOp>();
-    } else {
-        render_context->record.stencil_func_front = helper.pop<SceGxmStencilFunc>();
-        render_context->record.stencil_fail_front = helper.pop<SceGxmStencilOp>();
-        render_context->record.stencil_depth_fail_front = helper.pop<SceGxmStencilOp>();
-        render_context->record.stencil_depth_pass_front = helper.pop<SceGxmStencilOp>();
+    stencil_state_op.func = helper.pop<SceGxmStencilFunc>();
+    stencil_state_op.stencil_fail = helper.pop<SceGxmStencilOp>();
+    stencil_state_op.depth_fail = helper.pop<SceGxmStencilOp>();
+    stencil_state_op.depth_pass = helper.pop<SceGxmStencilOp>();
+    stencil_state_vals.compare_mask = helper.pop<std::uint8_t>();
+    stencil_state_vals.write_mask = helper.pop<std::uint8_t>();
+
+    if (render_context->record.is_maskupdate) {
+        if (stencil_state_op.func == SCE_GXM_STENCIL_FUNC_NEVER) {
+            render_context->record.writing_mask = 0.0f;
+        } else if (stencil_state_op.func == SCE_GXM_STENCIL_FUNC_ALWAYS) {
+            render_context->record.writing_mask = 1.0f;
+        }
+        return;
     }
 
     if (renderer.current_backend == Backend::D3D12) {
-        d3d12::sync_stencil_func(*reinterpret_cast<d3d12::D3D12Context *>(render_context), is_back);
+        d3d12::refresh_pipeline(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
+        d3d12::sync_stencil_func(*reinterpret_cast<d3d12::D3D12Context *>(render_context), !is_front);
     }
 }
 
-COMMAND_SET_STATE(fragment_texture) {
-    TRACY_FUNC_COMMANDS_SET_STATE(fragment_texture);
+COMMAND_SET_STATE(stencil_ref) {
+    TRACY_FUNC_COMMANDS_SET_STATE(stencil_ref);
+    const bool is_front = helper.pop<bool>();
+    const uint8_t sref = helper.pop<const unsigned char>();
+
+    GxmStencilStateValues &stencil_state_vals = is_front ? render_context->record.front_stencil_state_values : render_context->record.back_stencil_state_values;
+    stencil_state_vals.ref = sref;
+
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::sync_stencil_func(*reinterpret_cast<d3d12::D3D12Context *>(render_context), !is_front);
+    }
+}
+
+COMMAND_SET_STATE(texture) {
+    TRACY_FUNC_COMMANDS_SET_STATE(texture);
     const uint32_t index = helper.pop<uint32_t>();
     const SceGxmTexture texture = helper.pop<SceGxmTexture>();
 
-    render_context->record.fragment_textures[index] = texture;
-
     if (renderer.current_backend == Backend::D3D12) {
         d3d12::sync_texture(*reinterpret_cast<d3d12::D3D12Context *>(render_context), mem, index, texture, config);
+    }
+}
+
+COMMAND_SET_STATE(two_sided) {
+    TRACY_FUNC_COMMANDS_SET_STATE(two_sided);
+    const SceGxmTwoSidedMode two_sided = helper.pop<SceGxmTwoSidedMode>();
+    render_context->record.two_sided = two_sided;
+
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::refresh_pipeline(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
+        d3d12::sync_stencil_func(*reinterpret_cast<d3d12::D3D12Context *>(render_context), false);
+        d3d12::sync_stencil_func(*reinterpret_cast<d3d12::D3D12Context *>(render_context), true);
+    }
+}
+
+COMMAND_SET_STATE(cull_mode) {
+    TRACY_FUNC_COMMANDS_SET_STATE(cull_mode);
+    render_context->record.cull_mode = helper.pop<SceGxmCullMode>();
+
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::refresh_pipeline(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
+    }
+}
+
+COMMAND_SET_STATE(vertex_stream) {
+    TRACY_FUNC_COMMANDS_SET_STATE(vertex_stream);
+    const Ptr<const uint8_t> stream_data = helper.pop<Ptr<const uint8_t>>();
+    const std::size_t stream_index = helper.pop<std::size_t>();
+    const std::size_t stream_data_length = helper.pop<std::size_t>();
+
+    renderer::GXMStreamInfo &info = render_context->record.vertex_streams[stream_index];
+    info.data = stream_data;
+    info.size = stream_data_length;
+}
+
+COMMAND_SET_STATE(fragment_program_enable) {
+    TRACY_FUNC_COMMANDS_SET_STATE(fragment_program_enable);
+    const bool is_front = helper.pop<bool>();
+    const SceGxmFragmentProgramMode mode = helper.pop<SceGxmFragmentProgramMode>();
+
+    if (is_front)
+        render_context->record.front_side_fragment_program_mode = mode;
+    else
+        render_context->record.back_side_fragment_program_mode = mode;
+
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::refresh_pipeline(*reinterpret_cast<d3d12::D3D12Context *>(render_context));
+    }
+}
+
+COMMAND_SET_STATE(visibility_buffer) {
+    TRACY_FUNC_COMMANDS_SET_STATE(visibility_buffer);
+    const Ptr<uint32_t> buffer = helper.pop<Ptr<uint32_t>>();
+    const uint32_t stride = helper.pop<uint32_t>();
+
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::sync_visibility_buffer(*reinterpret_cast<d3d12::D3D12Context *>(render_context), buffer, stride);
+    }
+}
+
+COMMAND_SET_STATE(visibility_index) {
+    TRACY_FUNC_COMMANDS_SET_STATE(visibility_index);
+    const uint32_t index = helper.pop<uint32_t>();
+    const bool enable = helper.pop<bool>();
+    const bool is_increment = helper.pop<bool>();
+
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::sync_visibility_index(*reinterpret_cast<d3d12::D3D12Context *>(render_context), enable, index, is_increment);
     }
 }
 
@@ -251,11 +367,32 @@ COMMAND(handle_set_state) {
     case GXMState::StencilFunc:
         cmd_set_state_stencil_func(renderer, mem, config, helper, render_context);
         break;
+    case GXMState::StencilRef:
+        cmd_set_state_stencil_ref(renderer, mem, config, helper, render_context);
+        break;
     case GXMState::Texture:
-        cmd_set_state_fragment_texture(renderer, mem, config, helper, render_context);
+        cmd_set_state_texture(renderer, mem, config, helper, render_context);
+        break;
+    case GXMState::TwoSided:
+        cmd_set_state_two_sided(renderer, mem, config, helper, render_context);
+        break;
+    case GXMState::CullMode:
+        cmd_set_state_cull_mode(renderer, mem, config, helper, render_context);
+        break;
+    case GXMState::VertexStream:
+        cmd_set_state_vertex_stream(renderer, mem, config, helper, render_context);
         break;
     case GXMState::UniformBuffer:
         cmd_set_state_uniform_buffer(renderer, mem, config, helper, render_context);
+        break;
+    case GXMState::FragmentProgramEnable:
+        cmd_set_state_fragment_program_enable(renderer, mem, config, helper, render_context);
+        break;
+    case GXMState::VisibilityBuffer:
+        cmd_set_state_visibility_buffer(renderer, mem, config, helper, render_context);
+        break;
+    case GXMState::VisibilityIndex:
+        cmd_set_state_visibility_index(renderer, mem, config, helper, render_context);
         break;
     default:
         break;

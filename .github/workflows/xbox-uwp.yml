@@ -80,6 +80,7 @@ jobs:
         with:
           name: xbox-uwp-build-logs
           path: |
+            build_detailed.log
             build/build_detailed.log
             build/**/*.log
           if-no-files-found: ignore
@@ -91,10 +92,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           
           # Copy binary outputs
-          if (Test-Path "build/bin/Release") {
-              Copy-Item "build/bin/Release/*" -Destination $staging -Recurse -Force
-          } elseif (Test-Path "build/Release") {
-              Copy-Item "build/Release/*" -Destination $staging -Recurse -Force
+          $exe = Get-ChildItem -Path "build" -Filter "Vita3K.exe" -Recurse | Select-Object -First 1
+          if ($exe) {
+              Write-Host "Found executable at $($exe.FullName)"
+              Copy-Item "$($exe.DirectoryName)/*" -Destination $staging -Recurse -Force
+          } else {
+              Write-Error "Vita3K.exe not found in build directory!"
           }
           
           # Copy Manifest and Assets

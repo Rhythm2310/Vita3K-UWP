@@ -26,6 +26,7 @@
 #include <util/tracy.h>
 
 #include <renderer/d3d12/state.h>
+#include <functional>
 
 // keywords.h must be after tracy.h for msvc compiler
 #include <util/keywords.h>
@@ -152,7 +153,7 @@ COMMAND(handle_transfer_copy) {
         LOG_ERROR_ONCE("Transfer copy with non-zero key mask not handled for format 0x{:0X}", fmt::underlying(src_fmt));
     }
 
-    vulkan::CallbackRequestFunction copy_operation = [=, &mem]() {
+    std::function<void()> copy_operation = [=, &mem]() {
         const SceGxmTransferImage &src = images[0];
         const SceGxmTransferImage &dst = images[1];
 
@@ -184,12 +185,6 @@ COMMAND(handle_transfer_copy) {
         delete[] images;
     };
 
-    if (renderer.current_backend == Backend::D3D12 && renderer.features.enable_memory_mapping && !renderer.disable_surface_sync) {
-        if (dynamic_cast<vulkan::VKState &>(renderer).surface_cache.check_for_surface(mem, images[0].address.address(), copy_operation, images[1].address.address()))
-            // let the vulkan surface cache handle it
-            return;
-    }
-
     copy_operation();
 }
 
@@ -209,7 +204,7 @@ COMMAND(handle_transfer_downscale) {
     dst->address = (dst->address.cast<uint8_t>() + dst->y * dst->stride + dst->x * pixel_bytes).cast<void>();
 
     // only rgb formats are supported by the PS Vita for downscaling
-    vulkan::CallbackRequestFunction downscale_operation = [&mem, src, dst]() {
+    std::function<void()> downscale_operation = [&mem, src, dst]() {
         AVPixelFormat pixel_fmt = AV_PIX_FMT_NONE;
         switch (src->format) {
         case SCE_GXM_TRANSFER_FORMAT_U5U6U5_BGR:
@@ -275,12 +270,6 @@ COMMAND(handle_transfer_downscale) {
         delete src;
         delete dst;
     };
-
-    if (renderer.current_backend == Backend::D3D12 && renderer.features.enable_memory_mapping && !renderer.disable_surface_sync) {
-        if (dynamic_cast<vulkan::VKState &>(renderer).surface_cache.check_for_surface(mem, src->address.address(), downscale_operation, dst->address.address()))
-            // let the vulkan surface cache handle it
-            return;
-    }
 
     downscale_operation();
 }

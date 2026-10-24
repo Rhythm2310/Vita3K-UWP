@@ -136,15 +136,7 @@ COMMAND(handle_sync_surface_data) {
     const std::size_t total_size = height * gxm::get_stride_in_bytes(surface->colorFormat, stride_in_pixels);
 
     switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        if (helper.cmd->status) {
-            gl::lookup_and_get_surface_data(static_cast<gl::GLState &>(renderer), mem, *surface);
-        } else {
-            gl::get_surface_data(static_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context), pixels, *surface);
-        }
-        break;
-
-    case Backend::Vulkan:
+    case Backend::D3D12:
         break;
 
     default:

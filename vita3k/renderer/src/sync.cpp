@@ -22,6 +22,7 @@
 #include <renderer/state.h>
 #include <renderer/types.h>
 
+#include <config/state.h>
 #include <display/state.h>
 #include <renderer/d3d12/functions.h>
 #include <renderer/d3d12/state.h>

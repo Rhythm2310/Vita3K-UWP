@@ -4,7 +4,8 @@
 
 #include <config/state.h>
 #include <display/state.h>
-#include <mem/mem.h>
+#include <mem/state.h>
+#include <mem/functions.h>
 #include <util/log.h>
 
 #include <d3dcompiler.h>

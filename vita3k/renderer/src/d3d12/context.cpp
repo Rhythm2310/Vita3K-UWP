@@ -2,7 +2,8 @@
 #include <renderer/d3d12/functions.h>
 #include <renderer/d3d12/types.h>
 
-#include <mem/mem.h>
+#include <mem/state.h>
+#include <mem/functions.h>
 #include <util/log.h>
 
 namespace renderer::d3d12 {
