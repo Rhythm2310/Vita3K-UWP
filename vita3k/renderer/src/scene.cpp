@@ -29,13 +29,6 @@
 #include <util/log.h>
 #include <util/tracy.h>
 
-#define DEBUG_FRAMEBUFFER 1
-
-#if DEBUG_FRAMEBUFFER
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
-#endif
-
 namespace renderer {
 void destroy_command_payload(Command &cmd) {
     switch (cmd.opcode) {
@@ -110,53 +103,6 @@ COMMAND(handle_sync_surface_data) {
         lock.unlock();
         renderer.notification_ready.notify_all();
     };
-
-    if (renderer.disable_surface_sync)
-        // do it as soon as possible
-        signal_notifications();
-
-    if (renderer.disable_surface_sync || renderer.current_backend == Backend::D3D12) {
-        if (helper.cmd->status) {
-            complete_command(renderer, helper, 0);
-        }
-        signal_notifications();
-        return;
-    }
-
-#ifndef __ANDROID__
-
-    const size_t width = surface->width;
-    const size_t height = surface->height;
-    const size_t stride_in_pixels = surface->strideInPixels;
-    const Address data = surface->data.address();
-    uint32_t *const pixels = Ptr<uint32_t>(data).get(mem);
-
-    // We protect the data to track syncing. If this is called then the data is definitely protected somehow.
-    // We just unprotect and reprotect again :D
-    const std::size_t total_size = height * gxm::get_stride_in_bytes(surface->colorFormat, stride_in_pixels);
-
-    switch (renderer.current_backend) {
-    case Backend::D3D12:
-        break;
-
-    default:
-        REPORT_MISSING(renderer.current_backend);
-        break;
-    }
-
-#if DEBUG_FRAMEBUFFER
-    if (data != 0 && config.color_surface_debug) {
-        const std::string filename = fmt::format("color_surface_0x{:X}.png", data);
-
-        // Assuming output is RGBA
-        const int result = stbi_write_png(filename.c_str(), width, height, 4, pixels, stride_in_pixels * 4);
-
-        if (!result) {
-            LOG_TRACE("Fail to save color surface 0x{:X}", data);
-        }
-    }
-#endif
-#endif
 
     if (helper.cmd->status) {
         complete_command(renderer, helper, 0);
