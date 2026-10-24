@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:iot="http://schemas.microsoft.com/appx/manifest/iot/windows10"
+  IgnorableNamespaces="uap mp rescap desktop iot">
+
+  <Identity
+    Name="Vita3K-UWP"
+    Publisher="CN=Vita3K-UWP"
+    Version="1.0.0.0"
+    ProcessorArchitecture="x64" />
+
+  <mp:PhoneIdentity PhoneProductId="a42f5348-7359-4f70-a3df-673082531e8c" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+
+  <Properties>
+    <DisplayName>Vita3K UWP</DisplayName>
+    <PublisherDisplayName>Vita3K Team</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>PlayStation Vita Emulator for Xbox Series S/X UWP</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22621.0" />
+    <TargetDeviceFamily Name="Windows.Xbox" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="Vita3K"
+        Description="PlayStation Vita Emulator"
+        BackgroundColor="#1F1F1F"
+        Square150x150Logo="Assets\Logo.png"
+        Square44x44Logo="Assets\SmallLogo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\WideLogo.png" ShortName="Vita3K">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo"/>
+            <uap:ShowOn Tile="wide310x150Logo"/>
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#1F1F1F" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Code generation capability is required for Dynarmic JIT dynamic code generation on Xbox -->
+    <DeviceCapability Name="codeGeneration" />
+    <Capability Name="internetClient" />
+    <!-- Expanded resources unlocks up to ~5GB of RAM on Xbox Series S instead of 1GB limit -->
+    <rescap:Capability Name="expandedResources" />
+    <!-- Broad file system access to allow accessing USB drives and storage folders -->
+    <rescap:Capability Name="broadFileSystemAccess" />
+  </Capabilities>
+</Package>

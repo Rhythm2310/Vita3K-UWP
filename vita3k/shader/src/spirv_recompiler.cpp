@@ -34,6 +34,13 @@
 #include <SPIRV/SpvBuilder.h>
 #include <SPIRV/disassemble.h>
 #include <spirv_glsl.hpp>
+#include <spirv_hlsl.hpp>
+
+#ifdef _WIN32
+#include <d3dcompiler.h>
+#include <wrl/client.h>
+using Microsoft::WRL::ComPtr;
+#endif
 
 #include <algorithm>
 #include <fstream>
@@ -2027,6 +2034,43 @@ static std::string convert_spirv_to_glsl(const std::string &shader_name, SpirvCo
     return source;
 }
 
+static std::string convert_spirv_to_hlsl(const std::string &shader_name, SpirvCode &spirv_binary, bool is_fragment) {
+    spirv_cross::CompilerHLSL hlsl(std::move(spirv_binary));
+    spirv_cross::CompilerHLSL::Options options;
+    options.shader_model = 50;
+    hlsl.set_hlsl_options(options);
+    hlsl.add_header_line("// Vita3K Xbox D3D12 HLSL: " + shader_name);
+    return hlsl.compile();
+}
+
+static std::vector<uint8_t> compile_hlsl_to_dxil(const std::string &hlsl_source, bool is_fragment) {
+#ifdef _WIN32
+    ComPtr<ID3DBlob> code_blob;
+    ComPtr<ID3DBlob> error_blob;
+    const char *target = is_fragment ? "ps_5_0" : "vs_5_0";
+    HRESULT hr = D3DCompile(
+        hlsl_source.data(),
+        hlsl_source.size(),
+        nullptr,
+        nullptr,
+        nullptr,
+        "main",
+        target,
+        D3DCOMPILE_OPTIMIZATION_LEVEL3,
+        0,
+        &code_blob,
+        &error_blob);
+    if (SUCCEEDED(hr) && code_blob) {
+        const uint8_t *ptr = static_cast<const uint8_t *>(code_blob->GetBufferPointer());
+        return std::vector<uint8_t>(ptr, ptr + code_blob->GetBufferSize());
+    }
+    if (error_blob) {
+        LOG_ERROR("HLSL compilation failed: {}", static_cast<const char *>(error_blob->GetBufferPointer()));
+    }
+#endif
+    return {};
+}
+
 // ***********************
 // * Functions (utility) *
 // ***********************
@@ -2102,6 +2146,23 @@ GeneratedShader convert_gxp(const SceGxmProgram &program, const std::string &sha
                 dumper("frag", shader.glsl);
             } else {
                 dumper("vert", shader.glsl);
+            }
+        }
+    }
+
+    if (target == Target::HLSLD3D12) {
+        shader.hlsl = convert_spirv_to_hlsl(shader_hash, shader.spirv, program.is_fragment());
+        shader.dxil = compile_hlsl_to_dxil(shader.hlsl, program.is_fragment());
+
+        if (LOG_SHADER_CODE || force_shader_debug) {
+            LOG_INFO("Generated HLSL:\n{}", shader.hlsl);
+        }
+
+        if (dumper) {
+            if (program.is_fragment()) {
+                dumper("hlsl_frag", shader.hlsl);
+            } else {
+                dumper("hlsl_vert", shader.hlsl);
             }
         }
     }

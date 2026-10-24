@@ -40,7 +40,8 @@ static constexpr uint32_t GAMMA_CORRECTION_SPECIALIZATION_ID = 0;
 enum struct Target {
     GLSLOpenGL,
     SpirVOpenGL,
-    SpirVVulkan
+    SpirVVulkan,
+    HLSLD3D12
 };
 
 // Hints given while compiling the shader
@@ -64,6 +65,8 @@ struct Hints {
 struct GeneratedShader {
     std::string glsl;
     usse::SpirvCode spirv;
+    std::string hlsl;
+    std::vector<uint8_t> dxil;
 };
 
 // Dump generated SPIR-V disassembly up to this point

@@ -171,6 +171,11 @@ static shader::GeneratedShader load_shader_generic(shader::Target target, const 
             if (!source.empty()) {
                 return { source, std::vector<uint32_t>() };
             }
+        } else if (target == shader::Target::HLSLD3D12) {
+            std::vector<uint8_t> source = load_shader_generic<std::vector<uint8_t>>(get_shader_path("dxil"));
+            if (!source.empty()) {
+                return { "", {}, "", source };
+            }
         } else {
             std::vector<uint32_t> source = load_shader_generic<std::vector<uint32_t>>(get_shader_path("spv"));
             if (!source.empty())
@@ -204,7 +209,10 @@ static shader::GeneratedShader load_shader_generic(shader::Target target, const 
     const auto shaders_cache_path = fs::path(shader_cache_path);
     fs::create_directories(shaders_cache_path);
 
-    if (target != shader::Target::GLSLOpenGL) {
+    if (target == shader::Target::HLSLD3D12) {
+        const auto shader_dst_path = get_shader_path("dxil");
+        fs_utils::dump_data(shader_dst_path, source.dxil.data(), source.dxil.size());
+    } else if (target != shader::Target::GLSLOpenGL) {
         const auto shader_dst_path = get_shader_path("spv");
         fs_utils::dump_data(shader_dst_path, source.spirv.data(), sizeof(uint32_t) * source.spirv.size());
     }
@@ -234,12 +242,25 @@ std::vector<uint32_t> load_spirv_shader(const SceGxmProgram &program, const Feat
     return load_shader_generic(target, program, features, hints, maskupdate, shader_cache_path, shader_log_path, shader_type_str, shader_version, shader_cache).spirv;
 }
 
+std::vector<uint8_t> load_dxil_shader(const SceGxmProgram &program, const FeatureState &features, const shader::Hints &hints, bool maskupdate, const fs::path &shader_cache_path, const fs::path &shader_log_path, const std::string &shader_version, bool shader_cache) {
+    auto shader_type_to_str = [](SceGxmProgramType type) {
+        return (type == SceGxmProgramType::Vertex) ? "vert.dxil" : ((type == SceGxmProgramType::Fragment) ? "frag.dxil" : "unknown.dxil");
+    };
+    const char *shader_type_str = shader_type_to_str(program.get_type());
+
+    return load_shader_generic(shader::Target::HLSLD3D12, program, features, hints, maskupdate, shader_cache_path, shader_log_path, shader_type_str, shader_version, shader_cache).dxil;
+}
+
 std::string pre_load_shader_glsl(const fs::path &shader_path) {
     return load_shader_generic<std::string>(shader_path);
 }
 
 std::vector<uint32_t> pre_load_shader_spirv(const fs::path &shader_path) {
     return load_shader_generic<std::vector<uint32_t>>(shader_path);
+}
+
+std::vector<uint8_t> pre_load_shader_dxil(const fs::path &shader_path) {
+    return load_shader_generic<std::vector<uint8_t>>(shader_path);
 }
 
 } // namespace renderer

@@ -297,7 +297,20 @@ bool init_paths(Root &root_paths) {
         auto vita_fs_path = fs_utils::utf8_to_path(sdl_vita_fs_path);
         SDL_free(sdl_vita_fs_path);
 
-#if defined(__APPLE__)
+#if defined(_WIN32)
+        // In UWP / Windows sandbox, exe install folder is read-only; use writable LocalState (vita_fs_path)
+        exe_path = vita_fs_path;
+
+        // Xbox Dev Mode USB Storage auto-discovery: check D:\Vita3K and E:\Vita3K
+        std::error_code ec;
+        if (fs::exists("D:\\Vita3K", ec)) {
+            vita_fs_path = "D:\\Vita3K";
+            LOG_INFO("Xbox Dev Mode USB Drive detected on D:\\Vita3K - using for storage");
+        } else if (fs::exists("E:\\Vita3K", ec)) {
+            vita_fs_path = "E:\\Vita3K";
+            LOG_INFO("Xbox Dev Mode USB Drive detected on E:\\Vita3K - using for storage");
+        }
+#elif defined(__APPLE__)
         // Store other data in the user-wide path. Otherwise we may end up dumping
         // files into the "/Applications/" install directory or the app bundle.
         // This will typically be "~/Library/Application Support/Vita3K/Vita3K/".

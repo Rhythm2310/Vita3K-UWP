@@ -4,6 +4,7 @@
 #include <renderer/state.h>
 #include <renderer/types.h>
 
+#include <renderer/d3d12/allocator.h>
 #include <renderer/d3d12/pipeline_cache.h>
 #include <renderer/d3d12/screen_renderer.h>
 #include <renderer/d3d12/surface_cache.h>
@@ -37,6 +38,7 @@ struct D3D12State : public renderer::State {
     ComPtr<ID3D12RootSignature> root_signature;
     ComPtr<ID3D12GraphicsCommandList> direct_command_list;
 
+    D3D12Allocator allocator;
     PipelineCache pipeline_cache;
     D3D12SurfaceCache surface_cache;
     D3D12TextureCache texture_cache;

@@ -413,3 +413,9 @@ endif()
 
 # Use XDG desktop portals on Linux
 
+if(WIN32)
+	add_library(d3d12ma STATIC D3D12MemoryAllocator/D3D12MemAlloc.cpp)
+	target_include_directories(d3d12ma PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/D3D12MemoryAllocator")
+endif()
+
+
