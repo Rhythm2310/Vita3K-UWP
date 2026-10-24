@@ -66,7 +66,7 @@ struct Config {
         int audio_volume = 100;
         bool ngs_enable = true;
         bool pstv_mode = false;
-        std::string backend_renderer = "Vulkan";
+        std::string backend_renderer = "D3D12";
         int gpu_idx = 0;
 #ifdef __ANDROID__
         std::string custom_driver_name{};

@@ -141,7 +141,7 @@ using PhysicalKeyCode = input::PhysicalKeyCode;
     code(bool, "stretch_the_display_area", false, stretch_the_display_area)                             \
     code(bool, "fullscreen_hd_res_pixel_perfect", false, fullscreen_hd_res_pixel_perfect)               \
     code(bool, "archive-log", false, archive_log)                                                       \
-    code(std::string, "backend-renderer", "Vulkan", backend_renderer)                                   \
+    code(std::string, "backend-renderer", "D3D12", backend_renderer)                                    \
     code(std::string, "custom-driver-name", "", custom_driver_name)                                     \
     code(bool, "turbo-mode", false, turbo_mode)                                                         \
     code(int, "gpu-idx", 0, gpu_idx)                                                                    \

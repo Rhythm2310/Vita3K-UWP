@@ -166,13 +166,7 @@ static overlay::button_states poll_overlay_input(EmuEnvState &emuenv) {
 }
 
 static void set_backend_renderer(EmuEnvState &emuenv, const std::string &backend_renderer) {
-#ifndef __APPLE__
-    emuenv.backend_renderer = (string_utils::toupper(backend_renderer) == "OPENGL")
-        ? renderer::Backend::OpenGL
-        : renderer::Backend::Vulkan;
-#else
-    emuenv.backend_renderer = renderer::Backend::Vulkan;
-#endif
+    emuenv.backend_renderer = renderer::Backend::D3D12;
 }
 
 static bool applies_to_active_profile(const EmuEnvState &emuenv, const std::string &scope_app_path) {
@@ -302,13 +296,16 @@ bool init_paths(Root &root_paths) {
         exe_path = vita_fs_path;
 
         // Xbox Dev Mode USB Storage auto-discovery: check D:\Vita3K and E:\Vita3K
-        std::error_code ec;
-        if (fs::exists("D:\\Vita3K", ec)) {
-            vita_fs_path = "D:\\Vita3K";
-            LOG_INFO("Xbox Dev Mode USB Drive detected on D:\\Vita3K - using for storage");
-        } else if (fs::exists("E:\\Vita3K", ec)) {
-            vita_fs_path = "E:\\Vita3K";
-            LOG_INFO("Xbox Dev Mode USB Drive detected on E:\\Vita3K - using for storage");
+        try {
+            boost::system::error_code ec;
+            if (fs::exists(fs::path("D:\\Vita3K"), ec) && !ec) {
+                vita_fs_path = "D:\\Vita3K";
+                LOG_INFO("Xbox Dev Mode USB Drive detected on D:\\Vita3K - using for storage");
+            } else if (fs::exists(fs::path("E:\\Vita3K"), ec) && !ec) {
+                vita_fs_path = "E:\\Vita3K";
+                LOG_INFO("Xbox Dev Mode USB Drive detected on E:\\Vita3K - using for storage");
+            }
+        } catch (...) {
         }
 #elif defined(__APPLE__)
         // Store other data in the user-wide path. Otherwise we may end up dumping

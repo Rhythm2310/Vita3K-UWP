@@ -126,7 +126,7 @@ jobs:
             -Subject "CN=Vita3K-UWP" `
             -KeyUsage DigitalSignature `
             -FriendlyName "Vita3K Xbox Test Certificate" `
-            -CertStoreLocation "Cert:\LocalMachine\My" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
             -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3")
           
           Export-Certificate -Cert $cert -FilePath $certPath
@@ -140,7 +140,7 @@ jobs:
           & "$sdkBin\MakeAppx.exe" pack /d "build/appx_layout" /p "build/Vita3K-UWP.msix" /o /v
           
           # Sign MSIX
-          & "$sdkBin\SignTool.exe" sign /fd SHA256 /a /f $pfxPath /p "Vita3KPassword123!" "build/Vita3K-UWP.msix"
+          & "$sdkBin\SignTool.exe" sign /fd SHA256 /f $pfxPath /p "Vita3KPassword123!" "build/Vita3K-UWP.msix"
 
       - name: Upload Xbox Series S MSIX Package
         uses: actions/upload-artifact@v4
