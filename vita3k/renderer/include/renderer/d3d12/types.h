@@ -61,6 +61,7 @@ struct D3D12RenderTarget : public RenderTarget {
 };
 
 struct D3D12Context : public Context {
+    MemState *mem = nullptr;
     ComPtr<ID3D12GraphicsCommandList> command_list;
     D3D12RenderTarget *current_rt = nullptr;
 };

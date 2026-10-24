@@ -135,7 +135,7 @@ bool create(std::unique_ptr<VertexProgram> &vp, D3D12State &state, const SceGxmP
         false,
         state.shaders_path,
         state.shaders_log_path,
-        state.shaders_version,
+        state.shader_version,
         true);
 
     vp = std::move(d3d_vp);
@@ -155,7 +155,7 @@ bool create(std::unique_ptr<FragmentProgram> &fp, D3D12State &state, const SceGx
         false,
         state.shaders_path,
         state.shaders_log_path,
-        state.shaders_version,
+        state.shader_version,
         true);
 
     fp = std::move(d3d_fp);
