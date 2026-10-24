@@ -1,12 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-	set(ANDROID 1)
-	set(VCPKG_TARGET_ANDROID 1)
-	# this file must be included before everything else
-	include("cmake/vcpkg_android.cmake")
-endif()
-
 project(Vita3K)
 
 # Detects the amount of processors of the host machine and forwards the result to CPU_COUNT

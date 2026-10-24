@@ -29,13 +29,13 @@
   </Dependencies>
 
   <Resources>
-    <Resource Language="x-generate"/>
+    <Resource Language="en-US"/>
   </Resources>
 
   <Applications>
     <Application Id="App"
-      Executable="$targetnametoken$.exe"
-      EntryPoint="$targetentrypoint$">
+      Executable="Vita3K.exe"
+      EntryPoint="Vita3K.App">
       <uap:VisualElements
         DisplayName="Vita3K"
         Description="PlayStation Vita Emulator"
