@@ -171,6 +171,8 @@ target_link_libraries(vita3k PRIVATE
 	util
 	psvpfsparser
 	SDL3::SDL3
+	pugixml::pugixml
+	stb
 )
 
 set_target_properties(vita3k PROPERTIES OUTPUT_NAME Vita3K)

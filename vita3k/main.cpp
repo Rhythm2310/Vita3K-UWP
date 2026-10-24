@@ -5,6 +5,7 @@
 #include <app/functions.h>
 #include <config/functions.h>
 #include <config/version.h>
+#include <emuenv/app_launch_request.h>
 #include <emuenv/state.h>
 #include <include/cpu.h>
 #include <include/environment.h>
@@ -135,23 +136,23 @@ int main(int argc, char *argv[]) {
     app::load_users(emuenv);
 
     // Boot app if specified
-    if (!cfg.run_app_path.empty()) {
+    std::string title_to_boot;
+    if (cfg.run_app_path.has_value() && !cfg.run_app_path->empty()) {
+        title_to_boot = *cfg.run_app_path;
+    } else if (!emuenv.app.apps_list.apps.empty()) {
+        title_to_boot = emuenv.app.apps_list.apps.front().title_id;
+        cfg.run_app_path = title_to_boot;
+    }
+
+    if (!title_to_boot.empty()) {
         int32_t main_module_id = 0;
-        LOG_INFO("Launching title: {}", cfg.run_app_path);
-        ExitCode load_code = load_app(main_module_id, emuenv);
+        LOG_INFO("Launching title: {}", title_to_boot);
+        AppLaunchRequest request{ .app_path = title_to_boot };
+        ExitCode load_code = load_app(main_module_id, emuenv, request);
         if (load_code == Success) {
-            run_app(emuenv, main_module_id);
+            run_app(emuenv, main_module_id, request);
         } else {
-            LOG_ERROR("Failed to load application {}", cfg.run_app_path);
-        }
-    } else if (!emuenv.apps_list.empty()) {
-        // Auto-boot first available title or homebrew if no CLI argument passed
-        cfg.run_app_path = emuenv.apps_list.front().title_id;
-        int32_t main_module_id = 0;
-        LOG_INFO("Auto-launching installed title: {}", cfg.run_app_path);
-        ExitCode load_code = load_app(main_module_id, emuenv);
-        if (load_code == Success) {
-            run_app(emuenv, main_module_id);
+            LOG_ERROR("Failed to load application {}", title_to_boot);
         }
     } else {
         LOG_INFO("Vita3K ready. No applications installed yet in ux0:app.");
