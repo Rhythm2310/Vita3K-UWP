@@ -26,9 +26,8 @@
 #include <overlay/pause_overlay.h>
 #include <overlay/perf_overlay.h>
 #include <overlay/shader_compile_notice.h>
-#include <renderer/gl/state.h>
-#include <renderer/gl/types.h>
-#include <renderer/vulkan/functions.h>
+#include <renderer/d3d12/functions.h>
+#include <renderer/d3d12/state.h>
 
 #include <gxm/functions.h>
 #include <util/log.h>
@@ -50,7 +49,7 @@ void State::update_overlays() {
             auto notice = overlay_manager->get<overlay::shader_compile_notice>();
             if (!notice)
                 notice = overlay_manager->create<overlay::shader_compile_notice>();
-            notice->update_count(m_shaders_compiled_count, current_backend == Backend::Vulkan);
+            notice->update_count(m_shaders_compiled_count, true);
         } else if (m_shaders_compiled_count > 0) {
             auto notice = overlay_manager->get<overlay::shader_compile_notice>();
             if (notice && notice->should_hide()) {
@@ -242,10 +241,6 @@ void destroy_context(State &state, std::unique_ptr<Context> &context) {
 void destroy_context_during_shutdown(State &state, std::unique_ptr<Context> &context) {
     assert(!state.render_thread);
 
-    if (state.current_backend == Backend::OpenGL) {
-        state.set_current();
-    }
-
     if (state.context == context.get()) {
         state.context = nullptr;
     }
@@ -266,14 +261,8 @@ void destroy_render_target_during_shutdown(State &state, std::unique_ptr<RenderT
     if (!rt)
         return;
 
-    switch (state.current_backend) {
-    case Backend::OpenGL:
-        state.set_current();
-        break;
-
-    case Backend::Vulkan:
-        vulkan::destroy(dynamic_cast<vulkan::VKState &>(state), rt);
-        break;
+    if (state.current_backend == Backend::D3D12) {
+        d3d12::destroy(dynamic_cast<d3d12::D3D12State &>(state), rt);
     }
 
     rt.reset();

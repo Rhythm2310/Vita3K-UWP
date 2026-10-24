@@ -21,7 +21,7 @@
 #include <renderer/state.h>
 #include <renderer/types.h>
 
-#include <renderer/vulkan/types.h>
+#include <renderer/d3d12/types.h>
 
 #include <config/state.h>
 #include <display/state.h>
@@ -148,10 +148,6 @@ void process_batches(renderer::State &state, const FeatureState &features, MemSt
         if (!cmd_list || !is_cmd_ready(mem, *cmd_list)) {
             // beginning of the game or homebrew not using gxm
             if (state.context == nullptr)
-                return;
-
-            // keep the old behavior for opengl with vsync as it looks like the new one causes some issues
-            if (state.current_backend == Backend::OpenGL && config.current_config.v_sync)
                 return;
 
             renderer::SyncWaitResult wait_result = renderer::SyncWaitResult::TimedOut;

@@ -23,11 +23,9 @@
 #include <renderer/types.h>
 
 #include <display/state.h>
-#include <renderer/gl/functions.h>
-#include <renderer/gl/state.h>
-#include <renderer/vulkan/functions.h>
-#include <renderer/vulkan/state.h>
-#include <renderer/vulkan/types.h>
+#include <renderer/d3d12/functions.h>
+#include <renderer/d3d12/state.h>
+#include <renderer/d3d12/types.h>
 
 #include <renderer/functions.h>
 #include <util/tracy.h>
@@ -46,8 +44,7 @@ COMMAND(handle_signal_sync_object) {
     const uint32_t timestamp = helper.pop<uint32_t>();
 
     if (features.enable_memory_mapping && config.current_config.high_accuracy) {
-        assert(renderer.current_backend == renderer::Backend::Vulkan);
-        vulkan::signal_sync_object(dynamic_cast<vulkan::VKState &>(renderer), sync, timestamp);
+        d3d12::signal_sync_object(dynamic_cast<d3d12::D3D12State &>(renderer), sync, timestamp);
     } else {
         renderer::subject_done(sync, timestamp);
     }
@@ -78,14 +75,8 @@ COMMAND(handle_set_screen_filter) {
     TRACY_FUNC_COMMANDS(handle_set_screen_filter);
     std::unique_ptr<std::string> filter(helper.pop<std::string *>());
 
-    switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        dynamic_cast<gl::GLState &>(renderer).set_screen_filter(*filter);
-        break;
-
-    case Backend::Vulkan:
-        dynamic_cast<vulkan::VKState &>(renderer).screen_renderer.set_filter(*filter);
-        break;
+    if (renderer.current_backend == Backend::D3D12) {
+        dynamic_cast<d3d12::D3D12State &>(renderer).set_screen_filter(*filter);
     }
 }
 
@@ -103,10 +94,10 @@ COMMAND(new_frame) {
         renderer.should_display = true;
     }
 
-    if (renderer.current_backend == Backend::Vulkan) {
+    if (renderer.current_backend == Backend::D3D12) {
         renderer::Context *active_context = helper.pop<renderer::Context *>();
         if (active_context) {
-            vulkan::new_frame(*reinterpret_cast<vulkan::VKContext *>(active_context));
+            d3d12::new_frame(*reinterpret_cast<d3d12::D3D12Context *>(active_context));
         }
     }
 }
@@ -119,18 +110,6 @@ void finish(State &state, Context *context) {
     // unblock game threads if shutting down
     if (state.render_abort.load(std::memory_order_relaxed))
         return;
-
-    // Wait for the VK wait thread to finish processing all pending requests.
-    // Push a callback request on the queue and wait for it to be treated
-    if (state.current_backend == Backend::Vulkan && state.features.enable_memory_mapping) {
-        auto &vk_state = static_cast<vulkan::VKState &>(state);
-        std::promise<void> promise;
-        auto callback = [&]() {
-            promise.set_value();
-        };
-        vk_state.request_queue.push(vulkan::CallbackRequest{ new vulkan::CallbackRequestFunction(callback) });
-        promise.get_future().wait();
-    }
 }
 
 int wait_for_status(State &state, int *status, int signal, bool wake_on_equal) {

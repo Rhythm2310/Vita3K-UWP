@@ -17,7 +17,7 @@
 
 #include <renderer/shaders.h>
 
-#include <renderer/vulkan/state.h>
+#include <renderer/d3d12/state.h>
 
 #include <gxm/types.h>
 #include <renderer/state.h>
@@ -32,7 +32,7 @@
 namespace renderer {
 
 bool get_shaders_cache_hashs(State &renderer) {
-    const std::string hash_file_name = fmt::format("hashs-{}.dat", (renderer.current_backend == Backend::OpenGL) ? "gl" : "vk");
+    const std::string hash_file_name = "hashs-d3d12.dat";
 
     fs::ifstream shaders_hashs(renderer.shaders_path / hash_file_name, std::ios::in | std::ios::binary);
     if (!shaders_hashs.is_open())
@@ -59,11 +59,6 @@ bool get_shaders_cache_hashs(State &renderer) {
         return false;
     }
 
-    if (renderer.current_backend == Backend::Vulkan) {
-        // Read the pipeline cache
-        dynamic_cast<vulkan::VKState &>(renderer).pipeline_cache.read_pipeline_cache();
-    }
-
     // Read Hashs info value
     for (size_t a = 0; a < size; a++) {
         auto read = [&shaders_hashs]() {
@@ -88,7 +83,7 @@ bool get_shaders_cache_hashs(State &renderer) {
 
 void save_shaders_cache_hashs(State &renderer, std::vector<ShadersHash> &shaders_cache_hashs) {
     fs::create_directories(renderer.shaders_path);
-    std::string hash_file_name = fmt::format("hashs-{}.dat", (renderer.current_backend == Backend::OpenGL) ? "gl" : "vk");
+    std::string hash_file_name = "hashs-d3d12.dat";
     fs::ofstream shaders_hashs(renderer.shaders_path / hash_file_name, std::ios::out | std::ios::binary);
 
     if (shaders_hashs.is_open()) {

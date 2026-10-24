@@ -22,10 +22,8 @@
 #include <renderer/state.h>
 #include <renderer/types.h>
 
-#include <renderer/gl/functions.h>
-#include <renderer/gl/types.h>
-
-#include <renderer/vulkan/functions.h>
+#include <renderer/d3d12/functions.h>
+#include <renderer/d3d12/types.h>
 
 #include <config/state.h>
 #include <util/log.h>
@@ -78,18 +76,10 @@ COMMAND(handle_set_context) {
 
     destroy_command_payload(*helper.cmd);
 
-    switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::set_context(dynamic_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context), mem, reinterpret_cast<const gl::GLRenderTarget *>(rt), features);
-        break;
-
-    case Backend::Vulkan:
-        vulkan::set_context(*reinterpret_cast<vulkan::VKContext *>(render_context), mem, reinterpret_cast<vulkan::VKRenderTarget *>(rt), features);
-        break;
-
-    default:
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::set_context(*reinterpret_cast<d3d12::D3D12Context *>(render_context), mem, reinterpret_cast<d3d12::D3D12RenderTarget *>(rt), features);
+    } else {
         REPORT_MISSING(renderer.current_backend);
-        break;
     }
 }
 
@@ -125,27 +115,7 @@ COMMAND(handle_sync_surface_data) {
         // do it as soon as possible
         signal_notifications();
 
-    if (renderer.current_backend == Backend::Vulkan) {
-        vulkan::VKContext *context = reinterpret_cast<vulkan::VKContext *>(render_context);
-        if (context->is_recording)
-            context->stop_recording(vertex_notification, fragment_notification);
-    }
-
-    SceGxmColorSurface *surface = &render_context->record.color_surface;
-    if (helper.cmd->status) {
-        surface = helper.pop<SceGxmColorSurface *>();
-        if (!surface) {
-            signal_notifications();
-            complete_command(renderer, helper, 1);
-            return;
-        }
-    }
-
-    // additional check to make sure we never try to perform surface sync on OpenGL with a non-integer resolution multiplier
-    if (renderer.current_backend == Backend::OpenGL && static_cast<int>(renderer.res_multiplier * 4.0f) % 4 != 0)
-        renderer.disable_surface_sync = true;
-
-    if (renderer.disable_surface_sync || renderer.current_backend == Backend::Vulkan) {
+    if (renderer.disable_surface_sync || renderer.current_backend == Backend::D3D12) {
         if (helper.cmd->status) {
             complete_command(renderer, helper, 0);
         }
@@ -213,8 +183,8 @@ COMMAND(handle_mid_scene_flush) {
     }
 
     const SceGxmNotification notification = helper.pop<SceGxmNotification>();
-    if (renderer.current_backend == Backend::Vulkan) {
-        vulkan::mid_scene_flush(*reinterpret_cast<vulkan::VKContext *>(render_context), notification);
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::mid_scene_flush(*reinterpret_cast<d3d12::D3D12Context *>(render_context), notification);
     }
 }
 
@@ -226,20 +196,11 @@ COMMAND(handle_draw) {
     const std::uint32_t count = helper.pop<const std::uint32_t>();
     const std::uint32_t instance_count = helper.pop<const std::uint32_t>();
 
-    switch (renderer.current_backend) {
-    case Backend::OpenGL:
-        gl::draw(dynamic_cast<gl::GLState &>(renderer), *reinterpret_cast<gl::GLContext *>(render_context),
-            features, type, format, indices.cast<void>().get(mem), count, instance_count, mem, config);
-        break;
-
-    case Backend::Vulkan:
-        vulkan::draw(*reinterpret_cast<vulkan::VKContext *>(render_context), type, format, indices.cast<void>(),
+    if (renderer.current_backend == Backend::D3D12) {
+        d3d12::draw(*reinterpret_cast<d3d12::D3D12Context *>(render_context), type, format, indices.cast<void>(),
             count, instance_count, mem, config);
-        break;
-
-    default:
+    } else {
         REPORT_MISSING(renderer.current_backend);
-        break;
     }
 }
 } // namespace renderer

@@ -45,9 +45,6 @@
 [submodule "external/vita-toolchain"]
 	path = external/vita-toolchain
 	url = https://github.com/vitasdk/vita-toolchain.git
-[submodule "external/VulkanMemoryAllocator-Hpp"]
-	path = external/VulkanMemoryAllocator-Hpp
-	url = https://github.com/YaaZ/VulkanMemoryAllocator-Hpp
 [submodule "external/yaml-cpp"]
 	path = external/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp
@@ -69,18 +66,10 @@
 [submodule "external/tracy"]
 	path = external/tracy
 	url = https://github.com/wolfpld/tracy.git
-[submodule "external/nativefiledialog-extended"]
-	path = external/nativefiledialog-extended
-	url = https://github.com/btzy/nativefiledialog-extended.git
 [submodule "external/cubeb"]
 	path = external/cubeb
 	url = https://github.com/mozilla/cubeb.git
 [submodule "external/concurrentqueue"]
 	path = external/concurrentqueue
 	url = https://github.com/cameron314/concurrentqueue.git
-[submodule "external/libadrenotools"]
-	path = external/libadrenotools
-	url = https://github.com/bylaws/libadrenotools
-[submodule "external/substitute"]
-	path = external/substitute
-	url = https://github.com/Vita3K/substitute.git
+

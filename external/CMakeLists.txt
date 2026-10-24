@@ -56,7 +56,6 @@ set(SPDLOG_NO_THREAD_ID ON CACHE BOOL "")
 set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "")
 add_subdirectory(spdlog EXCLUDE_FROM_ALL)
 
-add_subdirectory(substitute EXCLUDE_FROM_ALL)
 
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/stb")
@@ -107,14 +106,6 @@ elseif (ARCHITECTURE STREQUAL "x86_64")
 	)
 endif ()
 
-if(ANDROID)
-	if(ARCHITECTURE STREQUAL "arm64")
-		add_subdirectory(libadrenotools)
-		target_compile_definitions(adrenotools INTERFACE USE_ADRENO_TOOLS)
-	else()
-		add_library(adrenotools INTERFACE)
-	endif()
-endif()
 
 if(WIN32)
 	add_library(winsock INTERFACE)
@@ -206,7 +197,7 @@ add_subdirectory(glslang)
 
 option(SPIRV_CROSS_CLI "Build the CLI binary. Requires SPIRV_CROSS_STATIC." OFF)
 option(SPIRV_CROSS_ENABLE_TESTS "Enable SPIRV-Cross tests." OFF)
-option(SPIRV_CROSS_ENABLE_HLSL "Enable HLSL target support." OFF)
+option(SPIRV_CROSS_ENABLE_HLSL "Enable HLSL target support." ON)
 option(SPIRV_CROSS_ENABLE_MSL "Enable MSL target support." OFF)
 option(SPIRV_CROSS_ENABLE_CPP "Enable C++ target support." OFF)
 option(SPIRV_CROSS_ENABLE_REFLECT "Enable JSON reflection target support." OFF)
@@ -225,50 +216,6 @@ add_subdirectory(pugixml)
 add_library(CLI11 INTERFACE)
 target_include_directories(CLI11 INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/cli11")
 
-add_library(vulkan INTERFACE)
-target_include_directories(vulkan INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/VulkanMemoryAllocator-Hpp/Vulkan-Headers/include")
-if(APPLE)
-	if(NOT EXISTS "${CMAKE_BINARY_DIR}/external/MoltenVK-macos.tar")
-		message(STATUS "Downloading MoltenVK...")
-		file(DOWNLOAD https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.1/MoltenVK-macos.tar
-			"${CMAKE_BINARY_DIR}/external/MoltenVK-macos.tar"
-			SHOW_PROGRESS
-			EXPECTED_HASH SHA256=5ea0c259df7ded9a275444820f09cced54d6e5a7c7a31d262de62a5cdb7e15cf)
-	endif()
-	if(NOT EXISTS "${CMAKE_BINARY_DIR}/external/MoltenVK")
-		execute_process(COMMAND tar xf "${CMAKE_BINARY_DIR}/external/MoltenVK-macos.tar" --strip-components=1 MoltenVK/MoltenVK 
-			WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/external")
-	endif()
-	target_include_directories(vulkan INTERFACE "${CMAKE_BINARY_DIR}/external/MoltenVK/include")
-	set(MOLTENVK_DYLIB "${CMAKE_BINARY_DIR}/external/MoltenVK/dylib/macOS/libMoltenVK.dylib" PARENT_SCOPE)
-elseif(ANDROID AND NOT (CMAKE_BUILD_TYPE STREQUAL "Release"))
-	# add validation layer
-	if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../android/prebuilt/${ANDROID_ABI}/libVkLayer_khronos_validation.so")
-		set(VALIDATION_BINARY "android-binaries-1.4.341.0")
-
-		# download it if not already done
-		if(NOT EXISTS "${CMAKE_BINARY_DIR}/external/validation_layers.zip")
-			message(STATUS "Downloading validation layer...")
-			file(DOWNLOAD https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.341.0/${VALIDATION_BINARY}.zip
-				"${CMAKE_BINARY_DIR}/external/validation_layers.zip"
-				SHOW_PROGRESS
-				EXPECTED_HASH SHA256=b47aa5c4a65d9787ef051276587f50cfd70dcd822a8c1b7d4d4a92e28e993459)
-		endif()
-
-		if(NOT EXISTS "${CMAKE_BINARY_DIR}/external/validation_layers")
-			file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external/validation_layers")
-			execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${CMAKE_BINARY_DIR}/external/validation_layers.zip"
-				WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/external/validation_layers")
-		endif()
-
-		file(COPY "${CMAKE_BINARY_DIR}/external/validation_layers/${VALIDATION_BINARY}/${ANDROID_ABI}" DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/../android/prebuilt")
-	endif()
-endif()
-
-add_library(vma INTERFACE)
-target_include_directories(vma INTERFACE
-	"${CMAKE_CURRENT_SOURCE_DIR}/VulkanMemoryAllocator-Hpp/include"
-	"${CMAKE_CURRENT_SOURCE_DIR}/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include")
 
 if(ANDROID)
 	set(USE_STATIC_ANDROID_FFMPEG ON)
@@ -465,12 +412,4 @@ endif()
 # target_compile_definitions(tracy PUBLIC TRACY_ENABLE)
 
 # Use XDG desktop portals on Linux
-set(NFD_PORTAL ON)
 
-if(NOT ANDROID)
-	# nativefiledialog-extended
-	add_subdirectory(nativefiledialog-extended)
-
-	# Create alias to prevent the need of multiple changes in case the target name changes
-	add_library(NFDe::NFDe ALIAS nfd)
-endif()
