@@ -26,6 +26,8 @@
 #include <util/string_utils.h>
 
 #ifdef _WIN32
+#include <windows.h>
+#include <debugapi.h>
 #include <combaseapi.h>
 #define SDL_MAIN_HANDLED
 #include <winrt/base.h>
@@ -101,6 +103,7 @@ public:
 };
 
 #ifdef _WIN32
+namespace Vita3K {
 // C++/WinRT UWP CoreApplication View Implementation
 struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
     CoreWindow m_window{ nullptr };
@@ -136,89 +139,79 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
 #endif
         m_window.Activate();
 
-        IUnknown *core_window_unknown = winrt::get_unknown(m_window);
-        auto bounds = m_window.Bounds();
-        int win_w = std::max(1920, static_cast<int>(std::round(bounds.Width)));
-        int win_h = std::max(1080, static_cast<int>(std::round(bounds.Height)));
+        try {
+            IUnknown *core_window_unknown = winrt::get_unknown(m_window);
+            auto bounds = m_window.Bounds();
+            int win_w = std::max(1920, static_cast<int>(std::round(bounds.Width)));
+            int win_h = std::max(1080, static_cast<int>(std::round(bounds.Height)));
 
-        Root root_paths;
-        bool portable = app::init_paths(root_paths);
+            Root root_paths;
+            bool portable = app::init_paths(root_paths);
 
-        if (!fs::exists(root_paths.get_vita_fs_path())) {
-            fs::create_directories(root_paths.get_vita_fs_path());
-        }
+            boost::system::error_code ec;
+            fs::create_directories(root_paths.get_vita_fs_path(), ec);
+            fs::create_directories(root_paths.get_vita_fs_path() / "ux0/app", ec);
 
-        logging::init(root_paths, true);
-        LOG_INFO("=================================================================");
-        LOG_INFO("Vita3K Xbox Series S/X UWP D3D12 Port Starting");
-        LOG_INFO("CoreWindow activated: {}x{}", win_w, win_h);
-        LOG_INFO("OS: {}", CppCommon::Environment::OSVersion());
-        LOG_INFO("CPU: {} | {} Threads | {} GHz", CppCommon::CPU::Architecture(), CppCommon::CPU::LogicalCores(), static_cast<float>(CppCommon::CPU::ClockSpeed()) / 1000.f);
-        LOG_INFO("=================================================================");
+            logging::init(root_paths, true);
+            OutputDebugStringA("Vita3K: Logging initialized.\n");
 
-        Config cfg{};
-        EmuEnvState emuenv;
-        char *dummy_argv[] = { (char *)"Vita3K.exe", nullptr };
-        config::init_config(cfg, 1, dummy_argv, root_paths, portable);
+            Config cfg{};
+            EmuEnvState emuenv;
+            char *dummy_argv[] = { (char *)"Vita3K.exe", nullptr };
+            config::init_config(cfg, 1, dummy_argv, root_paths, portable);
 
-        fs::create_directories(cfg.get_vita_fs_path());
+            fs::create_directories(cfg.get_vita_fs_path(), ec);
+            fs::create_directories(cfg.get_vita_fs_path() / "ux0/app", ec);
 
-        SDL_SetHint(SDL_HINT_JOYSTICK_THREAD, "1");
-        SDL_SetHint(SDL_HINT_JOYSTICK_ENHANCED_REPORTS, "1");
+            SDL_SetHint(SDL_HINT_JOYSTICK_THREAD, "1");
+            SDL_SetHint(SDL_HINT_JOYSTICK_ENHANCED_REPORTS, "1");
 
-        if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) {
-            LOG_WARN("SDL audio/gamepad init: {}", SDL_GetError());
-        }
-
-        LOG_INFO("Available RAM: {} MiB", SDL_GetSystemRAM());
-
-        if (!app::init(emuenv, cfg, root_paths)) {
-            LOG_ERROR("Emulated environment initialization failed.");
-            return;
-        }
-
-        if (emuenv.cfg.controller_binds.empty() || (emuenv.cfg.controller_binds.size() != 15)
-            || emuenv.cfg.controller_axis_binds.empty() || (emuenv.cfg.controller_axis_binds.size() != 6)) {
-            app::reset_controller_binding(emuenv);
-        }
-
-        init_libraries(emuenv);
-
-        if (!app::init_apps_list(emuenv)) {
-            LOG_ERROR("Failed to initialize apps list.");
-            return;
-        }
-
-        app::load_users(emuenv);
-
-        // Initialize Direct3D 12 graphics backend with native CoreWindow
-        XboxFrameHost frame_host(core_window_unknown, win_w, win_h);
-        if (!renderer::init(frame_host, emuenv.renderer, emuenv.backend_renderer, emuenv.cfg, emuenv.get_root_paths())) {
-            LOG_ERROR("Failed to initialize Direct3D 12 renderer.");
-            return;
-        }
-
-        app::apply_renderer_config(emuenv);
-        if (!app::late_init(emuenv)) {
-            LOG_ERROR("Late init failed.");
-            return;
-        }
-
-        auto &d3d12 = dynamic_cast<renderer::d3d12::D3D12State &>(*emuenv.renderer);
-        d3d12.overlay_renderer.set_vita_fs_path(cfg.get_vita_fs_path());
-
-        auto refresh_osd_library = [&]() {
-            std::vector<renderer::d3d12::OsdAppInfo> osd_apps;
-            for (const auto &a : emuenv.app.apps_list.apps) {
-                std::string display_name = a.title.empty() ? a.title_id : a.title;
-                osd_apps.push_back({ a.title_id, display_name, a.category, a.app_ver });
+            if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC | SDL_INIT_EVENTS)) {
+                OutputDebugStringA(("Vita3K: SDL_Init note: " + std::string(SDL_GetError()) + "\n").c_str());
             }
-            d3d12.overlay_renderer.set_installed_apps(osd_apps);
-        };
-        refresh_osd_library();
 
-        bool running = true;
-        bool app_running = false;
+            LOG_INFO("Available RAM: {} MiB", SDL_GetSystemRAM());
+
+            // Initialize Direct3D 12 graphics backend FIRST with native CoreWindow
+            XboxFrameHost frame_host(core_window_unknown, win_w, win_h);
+            if (!renderer::init(frame_host, emuenv.renderer, emuenv.backend_renderer, emuenv.cfg, emuenv.get_root_paths())) {
+                OutputDebugStringA("Vita3K: Direct3D 12 renderer init failed!\n");
+            }
+
+            // Initialize emulator state
+            app::init(emuenv, cfg, root_paths);
+
+            if (emuenv.cfg.controller_binds.empty() || (emuenv.cfg.controller_binds.size() != 15)
+                || emuenv.cfg.controller_axis_binds.empty() || (emuenv.cfg.controller_axis_binds.size() != 6)) {
+                app::reset_controller_binding(emuenv);
+            }
+
+            init_libraries(emuenv);
+
+            // Safe discovery - never abort if games library is empty on initial boot
+            app::init_apps_list(emuenv);
+            app::load_users(emuenv);
+
+            if (emuenv.renderer) {
+                app::apply_renderer_config(emuenv);
+                app::late_init(emuenv);
+            }
+
+            auto &d3d12 = dynamic_cast<renderer::d3d12::D3D12State &>(*emuenv.renderer);
+            d3d12.overlay_renderer.set_vita_fs_path(cfg.get_vita_fs_path());
+
+            auto refresh_osd_library = [&]() {
+                std::vector<renderer::d3d12::OsdAppInfo> osd_apps;
+                for (const auto &a : emuenv.app.apps_list.apps) {
+                    std::string display_name = a.title.empty() ? a.title_id : a.title;
+                    osd_apps.push_back({ a.title_id, display_name, a.category, a.app_ver });
+                }
+                d3d12.overlay_renderer.set_installed_apps(osd_apps);
+            };
+            refresh_osd_library();
+
+            bool running = true;
+            bool app_running = false;
 
         // Connect OSD Firmware and Package installer callbacks
         d3d12.overlay_renderer.on_install_firmware = [&](const std::string &pup_path) {
@@ -394,8 +387,15 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
             SDL_CloseGamepad(gamepad);
         }
 
-        emuenv.renderer->cleanup();
+        if (emuenv.renderer) {
+            emuenv.renderer->cleanup();
+        }
         SDL_Quit();
+        } catch (const std::exception &e) {
+            OutputDebugStringA(("Vita3K: Exception in Run(): " + std::string(e.what()) + "\n").c_str());
+        } catch (...) {
+            OutputDebugStringA("Vita3K: Unknown exception in Run()\n");
+        }
     }
 
     void OnActivated(CoreApplicationView const &, IActivatedEventArgs const &) {
@@ -411,6 +411,7 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
         m_windowClosed = true;
     }
 };
+} // namespace Vita3K
 #endif
 
 // Fallback desktop execution function for non-AppContainer execution (e.g. CLI / dev testing)
@@ -501,18 +502,28 @@ static int run_desktop(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
 #ifdef _WIN32
     try {
-        winrt::init_apartment();
-        CoreApplication::Run(winrt::make<App>());
+        OutputDebugStringA("Vita3K: Starting CoreApplication::Run...\n");
+        CoreApplication::Run(winrt::make<Vita3K::App>());
+        OutputDebugStringA("Vita3K: CoreApplication::Run returned cleanly.\n");
         return 0;
     } catch (const winrt::hresult_error &e) {
-        LOG_WARN("CoreApplication::Run: 0x{:08X} (not packaged, falling back to desktop)", static_cast<uint32_t>(e.code()));
+        char buf[512];
+        snprintf(buf, sizeof(buf), "Vita3K: CoreApplication::Run failed: 0x%08X: %ls\n", 
+                 static_cast<uint32_t>(e.code()), e.message().c_str());
+        OutputDebugStringA(buf);
     } catch (const std::exception &e) {
-        LOG_ERROR("Standard exception in main: {}", e.what());
+        OutputDebugStringA(("Vita3K: Exception in main: " + std::string(e.what()) + "\n").c_str());
     } catch (...) {
-        LOG_ERROR("Unknown exception in main");
+        OutputDebugStringA("Vita3K: Unknown exception in main\n");
     }
-    return run_desktop(argc, argv);
+    return 0;
 #else
     return run_desktop(argc, argv);
 #endif
 }
+
+#ifdef _WIN32
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    return main(__argc, __argv);
+}
+#endif

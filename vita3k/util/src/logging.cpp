@@ -85,6 +85,9 @@ void set_log_callback(std::function<void(std::string, int)> cb) {
 
 ExitCode init(const Root &root_paths, bool use_stdout) {
     sinks.clear();
+#ifdef _WIN32
+    sinks.push_back(std::make_shared<spdlog::sinks::msvc_sink_mt>());
+#endif
     if (use_stdout)
 #ifdef __ANDROID__
         sinks.push_back(std::make_shared<spdlog::sinks::android_sink_mt>("Vita3K"));
@@ -100,8 +103,11 @@ ExitCode init(const Root &root_paths, bool use_stdout) {
         return InitConfigFailed;
 
     spdlog::set_error_handler([](const std::string &msg) {
+#ifdef _WIN32
+        OutputDebugStringA(("spdlog error: " + msg + "\n").c_str());
+#else
         std::cerr << "spdlog error: " << msg << std::endl;
-        assert(0);
+#endif
     });
 
 #ifdef _WIN32
