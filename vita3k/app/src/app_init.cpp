@@ -259,9 +259,6 @@ bool init_paths(Root &root_paths) {
 #else
     auto sdl_exe_path = SDL_GetBasePath();
     auto exe_path = fs_utils::utf8_to_path(sdl_exe_path);
-    if (sdl_exe_path) {
-        SDL_free(sdl_exe_path);
-    }
 
     root_paths.set_static_assets_path(exe_path);
 
