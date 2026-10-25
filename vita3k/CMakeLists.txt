@@ -179,7 +179,6 @@ target_link_libraries(vita3k PRIVATE
 set_target_properties(vita3k PROPERTIES 
 	OUTPUT_NAME Vita3K
 	WIN32_EXECUTABLE TRUE
-	VS_GLOBAL_AppContainerApplication "true"
 )
 
 if(WIN32)
