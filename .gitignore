@@ -90,3 +90,9 @@ fastlane/readme.md
 
 # Copilot local config
 .github/copilot-instructions.md
+
+# MSIX and Xbox UWP packages
+msix_package/
+*.msix
+*.cer
+*.pfx
