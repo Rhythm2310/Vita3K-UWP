@@ -253,20 +253,37 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
             worker.detach();
         };
 
-        d3d12.overlay_renderer.on_install_vpk = [&](const std::string &vpk_path) {
-            LOG_INFO("OSD: Triggered VPK install from: {}", vpk_path);
+        d3d12.overlay_renderer.on_install_vpk = [&](const std::string &pkg_path) {
+            LOG_INFO("OSD: Triggered package install from: {}", pkg_path);
             d3d12.overlay_renderer.set_install_in_progress(true);
             d3d12.overlay_renderer.set_install_progress(10, "Extracting package contents...");
 
-            std::thread worker([&d3d12, &emuenv, vpk_path, refresh_osd_library]() {
+            std::thread worker([&d3d12, &emuenv, pkg_path, refresh_osd_library]() {
                 try {
-                    install_archive(emuenv, fs::path(vpk_path), [&d3d12](ArchiveContents contents) {
-                        if (contents.progress.has_value()) {
-                            uint32_t pct = static_cast<uint32_t>(*contents.progress * 100.0f);
-                            d3d12.overlay_renderer.set_install_progress(pct, "Extracting package (" + std::to_string(pct) + "%)...");
+                    fs::path p(pkg_path);
+                    std::string ext = p.extension().string();
+                    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+                    if (ext == ".pkg") {
+                        std::string zrif = "";
+                        bool ok = install_pkg(p, emuenv, zrif, [&d3d12](float pct) {
+                            uint32_t p_val = static_cast<uint32_t>(pct * 100.0f);
+                            d3d12.overlay_renderer.set_install_progress(p_val, "Installing PKG (" + std::to_string(p_val) + "%)...");
+                        });
+                        if (ok) {
+                            d3d12.overlay_renderer.set_install_progress(100, "PKG package installed successfully!");
+                        } else {
+                            d3d12.overlay_renderer.set_install_progress(0, "Failed to install PKG package.");
                         }
-                    });
-                    d3d12.overlay_renderer.set_install_progress(100, "Package installed successfully!");
+                    } else {
+                        install_archive(emuenv, p, [&d3d12](ArchiveContents contents) {
+                            if (contents.progress.has_value()) {
+                                uint32_t pct = static_cast<uint32_t>(*contents.progress * 100.0f);
+                                d3d12.overlay_renderer.set_install_progress(pct, "Extracting package (" + std::to_string(pct) + "%)...");
+                            }
+                        });
+                        d3d12.overlay_renderer.set_install_progress(100, "Package installed successfully!");
+                    }
                     app::init_apps_list(emuenv);
                     refresh_osd_library();
                 } catch (const std::exception &e) {

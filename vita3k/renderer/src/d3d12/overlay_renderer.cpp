@@ -119,7 +119,12 @@ void OverlayRenderer::scan_storage() {
         fs::path("D:\\Vita3K\\PSP2UPDAT.PUP"),
         fs::path("E:\\PSP2UPDAT.PUP"),
         fs::path("E:\\Vita3K\\PSP2UPDAT.PUP"),
-        m_vita_fs_path / "PSP2UPDAT.PUP"
+        fs::path("F:\\PSP2UPDAT.PUP"),
+        fs::path("F:\\Vita3K\\PSP2UPDAT.PUP"),
+        fs::path("G:\\PSP2UPDAT.PUP"),
+        fs::path("G:\\Vita3K\\PSP2UPDAT.PUP"),
+        m_vita_fs_path / "PSP2UPDAT.PUP",
+        m_vita_fs_path / "packages" / "PSP2UPDAT.PUP"
     };
 
     for (const auto &p : candidate_pup_paths) {
@@ -129,19 +134,28 @@ void OverlayRenderer::scan_storage() {
         }
     }
 
-    // Look for .vpk files on USB drives
+    // Look for .vpk, .pkg, and .zip packages on USB drives and LocalState
     m_detected_vpks.clear();
     const std::vector<fs::path> scan_dirs = {
         fs::path("D:\\"),
         fs::path("D:\\Vita3K"),
         fs::path("E:\\"),
-        fs::path("E:\\Vita3K")
+        fs::path("E:\\Vita3K"),
+        fs::path("F:\\"),
+        fs::path("F:\\Vita3K"),
+        fs::path("G:\\"),
+        fs::path("G:\\Vita3K"),
+        m_vita_fs_path,
+        m_vita_fs_path / "packages",
+        m_vita_fs_path / "vpk"
     };
 
     for (const auto &dir : scan_dirs) {
         if (fs::exists(dir, ec) && fs::is_directory(dir, ec)) {
             for (const auto &entry : fs::directory_iterator(dir, ec)) {
-                if (entry.path().extension() == ".vpk") {
+                std::string ext = entry.path().extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext == ".vpk" || ext == ".pkg" || ext == ".zip") {
                     m_detected_vpks.push_back(entry.path().string());
                 }
             }
@@ -639,16 +653,19 @@ void OverlayRenderer::render_firmware_tab(float sw, float sh) {
         }
     }
 
-    // Detected VPK Packages
+    // Detected VPK / PKG Packages
     float vpk_y = fw_act_y + (m_install_in_progress.load() ? 240.0f : 170.0f);
-    draw_text(80.0f, vpk_y, "DETECTED HOMEBREW PACKAGES (.VPK) ON USB STORAGE", COLOR_XBOX_NEON, 1.8f);
+    draw_text(80.0f, vpk_y, "DETECTED PACKAGES (.VPK / .PKG) ON USB & LOCAL STORAGE", COLOR_XBOX_NEON, 1.8f);
 
     if (m_detected_vpks.empty()) {
-        draw_text(80.0f, vpk_y + 35.0f, "No .vpk packages found on USB drives. Copy homebrew .vpk to USB root and press (X).", COLOR_TEXT_MUTED, 1.6f);
+        draw_text(80.0f, vpk_y + 35.0f, "No .vpk/.pkg packages found. Copy packages to USB (D:/E:/F:) and press (X).", COLOR_TEXT_MUTED, 1.6f);
     } else {
-        for (size_t i = 0; i < std::min(m_detected_vpks.size(), size_t(3)); ++i) {
+        for (size_t i = 0; i < std::min(m_detected_vpks.size(), size_t(4)); ++i) {
             bool sel = (m_selected_item == static_cast<int>(i + 1));
-            draw_card(80.0f, vpk_y + 35.0f + i * 65.0f, panel_w, 55.0f, sel, m_detected_vpks[i], "Press (A) to extract and install", "VPK");
+            std::string ext = fs::path(m_detected_vpks[i]).extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), ::toupper);
+            std::string badge = ext.empty() ? "PKG" : (ext.front() == '.' ? ext.substr(1) : ext);
+            draw_card(80.0f, vpk_y + 35.0f + i * 65.0f, panel_w, 55.0f, sel, m_detected_vpks[i], "Press (A) to install package into Vita filesystem", badge);
         }
     }
 }
@@ -905,14 +922,22 @@ void OverlayRenderer::update_gamepad_input(SDL_Gamepad *gamepad, float dt) {
     bool btn_east  = SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST);
     bool btn_west  = SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_WEST);
 
+    // Read Left Analog Stick with deadzone for seamless console thumbstick navigation
+    int16_t stick_y = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTY);
+    int16_t stick_x = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX);
+    bool stick_up    = stick_y < -16000;
+    bool stick_down  = stick_y > 16000;
+    bool stick_left  = stick_x < -16000;
+    bool stick_right = stick_x > 16000;
+
     // Quick Menu navigation in-game
     if (m_in_game) {
         if (m_input_repeat_timer <= 0.0f) {
-            if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP)) {
+            if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP) || stick_up) {
                 m_quick_menu_index = (m_quick_menu_index + 4) % 5;
                 m_input_repeat_timer = 0.2f;
                 if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 8000, 8000, 40);
-            } else if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN)) {
+            } else if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) || stick_down) {
                 m_quick_menu_index = (m_quick_menu_index + 1) % 5;
                 m_input_repeat_timer = 0.2f;
                 if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 8000, 8000, 40);
@@ -956,21 +981,21 @@ void OverlayRenderer::update_gamepad_input(SDL_Gamepad *gamepad, float dt) {
             if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 12000, 12000, 50);
         }
 
-        // Vertical selection
-        if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP)) {
+        // Vertical selection (D-Pad or Left Stick)
+        if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP) || stick_up) {
             m_selected_item = std::max(0, m_selected_item - 1);
             m_input_repeat_timer = 0.2f;
             if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 8000, 8000, 40);
-        } else if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN)) {
+        } else if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) || stick_down) {
             int max_items = (m_active_tab == 0) ? std::max(1, static_cast<int>(m_installed_apps.size())) : 4;
             m_selected_item = std::min(max_items - 1, m_selected_item + 1);
             m_input_repeat_timer = 0.2f;
             if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 8000, 8000, 40);
         }
 
-        // Horizontal adjustment (Graphics tab)
+        // Horizontal adjustment (Graphics tab - D-Pad or Left Stick)
         if (m_active_tab == 2) {
-            if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT)) {
+            if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT) || stick_left) {
                 if (m_selected_item == 0) m_res_index = std::max(0, m_res_index - 1);
                 else if (m_selected_item == 1) m_cas_enabled = !m_cas_enabled;
                 else if (m_selected_item == 2) m_cas_sharpness = std::max(0.0f, m_cas_sharpness - 0.25f);
@@ -978,7 +1003,7 @@ void OverlayRenderer::update_gamepad_input(SDL_Gamepad *gamepad, float dt) {
                 else if (m_selected_item == 4) m_hud_mode = (m_hud_mode + 2) % 3;
                 m_input_repeat_timer = 0.2f;
                 if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 10000, 10000, 40);
-            } else if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) {
+            } else if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT) || stick_right) {
                 if (m_selected_item == 0) m_res_index = std::min(4, m_res_index + 1);
                 else if (m_selected_item == 1) m_cas_enabled = !m_cas_enabled;
                 else if (m_selected_item == 2) m_cas_sharpness = std::min(1.0f, m_cas_sharpness + 0.25f);
