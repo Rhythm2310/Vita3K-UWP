@@ -306,7 +306,7 @@ bool init_paths(Root &root_paths) {
                 fs::path uwp_local_path = local_folder_path;
                 vita_fs_path = uwp_local_path / "Vita3K" / "";
                 exe_path = uwp_local_path;
-                LOG_INFO("UWP ApplicationData LocalFolder detected: {}", vita_fs_path.string());
+                OutputDebugStringA(("Vita3K: UWP ApplicationData LocalFolder detected: " + vita_fs_path.string() + "\n").c_str());
             }
         } catch (...) {
             // Unpackaged desktop mode
@@ -329,10 +329,10 @@ bool init_paths(Root &root_paths) {
             boost::system::error_code ec;
             if (fs::exists(fs::path("D:\\Vita3K"), ec) && !ec) {
                 vita_fs_path = "D:\\Vita3K";
-                LOG_INFO("Xbox Dev Mode USB Drive detected on D:\\Vita3K - using for storage");
+                OutputDebugStringA("Vita3K: Xbox Dev Mode USB Drive detected on D:\\Vita3K - using for storage\n");
             } else if (fs::exists(fs::path("E:\\Vita3K"), ec) && !ec) {
                 vita_fs_path = "E:\\Vita3K";
-                LOG_INFO("Xbox Dev Mode USB Drive detected on E:\\Vita3K - using for storage");
+                OutputDebugStringA("Vita3K: Xbox Dev Mode USB Drive detected on E:\\Vita3K - using for storage\n");
             }
         } catch (...) {
         }

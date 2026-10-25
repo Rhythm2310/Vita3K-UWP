@@ -137,6 +137,7 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
 #ifdef TRACY_ENABLE
         ZoneScoped;
 #endif
+        OutputDebugStringA("Vita3K: App::Run entered.\n");
         m_window.Activate();
 
         try {
@@ -151,8 +152,11 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
             boost::system::error_code ec;
             fs::create_directories(root_paths.get_vita_fs_path(), ec);
             fs::create_directories(root_paths.get_vita_fs_path() / "ux0/app", ec);
+            fs::create_directories(root_paths.get_log_path(), ec);
+            fs::create_directories(root_paths.get_config_path(), ec);
+            fs::create_directories(root_paths.get_cache_path(), ec);
 
-            logging::init(root_paths, true);
+            logging::init(root_paths, false);
             OutputDebugStringA("Vita3K: Logging initialized.\n");
 
             Config cfg{};
@@ -166,20 +170,16 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
             SDL_SetHint(SDL_HINT_JOYSTICK_THREAD, "1");
             SDL_SetHint(SDL_HINT_JOYSTICK_ENHANCED_REPORTS, "1");
 
-            if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC | SDL_INIT_EVENTS)) {
+            if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
                 OutputDebugStringA(("Vita3K: SDL_Init note: " + std::string(SDL_GetError()) + "\n").c_str());
             }
 
             LOG_INFO("Available RAM: {} MiB", SDL_GetSystemRAM());
 
-            // Initialize Direct3D 12 graphics backend FIRST with native CoreWindow
-            XboxFrameHost frame_host(core_window_unknown, win_w, win_h);
-            if (!renderer::init(frame_host, emuenv.renderer, emuenv.backend_renderer, emuenv.cfg, emuenv.get_root_paths())) {
-                OutputDebugStringA("Vita3K: Direct3D 12 renderer init failed!\n");
+            // Initialize emulator state first so emuenv.cfg and root_paths are populated
+            if (!app::init(emuenv, cfg, root_paths)) {
+                OutputDebugStringA("Vita3K: app::init returned false/warning\n");
             }
-
-            // Initialize emulator state
-            app::init(emuenv, cfg, root_paths);
 
             if (emuenv.cfg.controller_binds.empty() || (emuenv.cfg.controller_binds.size() != 15)
                 || emuenv.cfg.controller_axis_binds.empty() || (emuenv.cfg.controller_axis_binds.size() != 6)) {
@@ -192,9 +192,20 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
             app::init_apps_list(emuenv);
             app::load_users(emuenv);
 
-            if (emuenv.renderer) {
-                app::apply_renderer_config(emuenv);
-                app::late_init(emuenv);
+            // Initialize Direct3D 12 graphics backend with native CoreWindow
+            XboxFrameHost frame_host(core_window_unknown, win_w, win_h);
+            if (!renderer::init(frame_host, emuenv.renderer, emuenv.backend_renderer, emuenv.cfg, emuenv.get_root_paths())) {
+                OutputDebugStringA("Vita3K: Direct3D 12 renderer init failed!\n");
+            }
+
+            if (!emuenv.renderer) {
+                OutputDebugStringA("Vita3K: FATAL: Renderer is null after init!\n");
+                return;
+            }
+
+            app::apply_renderer_config(emuenv);
+            if (!app::late_init(emuenv)) {
+                OutputDebugStringA("Vita3K: app::late_init note (continuing in dashboard mode)\n");
             }
 
             auto &d3d12 = dynamic_cast<renderer::d3d12::D3D12State &>(*emuenv.renderer);
@@ -326,6 +337,13 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView> {
         };
 
         SDL_Gamepad *gamepad = nullptr;
+        // Ensure connected gamepad is opened immediately
+        int num_joysticks = 0;
+        SDL_JoystickID *joysticks = SDL_GetGamepads(&num_joysticks);
+        if (joysticks && num_joysticks > 0) {
+            gamepad = SDL_OpenGamepad(joysticks[0]);
+            SDL_free(joysticks);
+        }
         uint64_t last_time = SDL_GetTicks();
         uint64_t fps_last_calc = last_time;
         uint32_t frame_counter = 0;
@@ -524,6 +542,10 @@ int main(int argc, char *argv[]) {
 
 #ifdef _WIN32
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    return main(__argc, __argv);
+}
+
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     return main(__argc, __argv);
 }
 #endif

@@ -142,7 +142,7 @@ add_subdirectory(util)
 add_subdirectory(gdbstub)
 add_subdirectory(packages)
 
-add_executable(vita3k main.cpp interface.cpp interface.h performance.cpp)
+add_executable(vita3k WIN32 main.cpp interface.cpp interface.h performance.cpp)
 
 target_include_directories(vita3k PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -176,12 +176,25 @@ target_link_libraries(vita3k PRIVATE
 	d3d12ma
 )
 
-set_target_properties(vita3k PROPERTIES OUTPUT_NAME Vita3K)
+set_target_properties(vita3k PROPERTIES 
+	OUTPUT_NAME Vita3K
+	WIN32_EXECUTABLE TRUE
+	VS_GLOBAL_AppContainerApplication "true"
+)
 
 if(WIN32)
 	target_link_libraries(vita3k PRIVATE windowsapp)
 	target_sources(vita3k PRIVATE resource.h Vita3K.ico Vita3K.rc Windows.manifest)
 	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT vita3k)
+
+	if(MSVC)
+		target_link_options(vita3k PRIVATE 
+			"/SUBSYSTEM:WINDOWS"
+			"/APPCONTAINER"
+			"/ENTRY:wWinMainCRTStartup"
+		)
+	endif()
+
 	add_custom_command(
 		TARGET vita3k
 		POST_BUILD

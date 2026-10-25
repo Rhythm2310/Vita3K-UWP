@@ -135,6 +135,31 @@ jobs:
           if (Test-Path "data") {
               Copy-Item "data" -Destination "$staging/data" -Recurse -Force
           }
+
+          # Inspect and Enforce PE Subsystem and AppContainer Characteristics for Xbox Dev Mode
+          $stagedExe = "$staging/Vita3K.exe"
+          Write-Host "--- Inspecting Staged Vita3K.exe PE Header ---"
+          $bytes = [System.IO.File]::ReadAllBytes($stagedExe)
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+          $subsystem = [BitConverter]::ToInt16($bytes, $peOffset + 24 + 68)
+          $dllChar = [BitConverter]::ToInt16($bytes, $peOffset + 24 + 70)
+          Write-Host "PE Subsystem: $subsystem (2 = Windows GUI, 3 = Console)"
+          Write-Host "DllCharacteristics: 0x$($dllChar.ToString('X4'))"
+          $hasAppContainer = ($dllChar -band 0x1000) -ne 0
+          Write-Host "AppContainer flag (0x1000): $hasAppContainer"
+
+          # Enforce with editbin if necessary to ensure 100% Xbox compliance
+          if ($subsystem -ne 2 -or -not $hasAppContainer) {
+              Write-Host "Enforcing /APPCONTAINER and /SUBSYSTEM:WINDOWS on $stagedExe using editbin..."
+              & editbin.exe /APPCONTAINER /SUBSYSTEM:WINDOWS $stagedExe
+              # Re-verify
+              $bytes = [System.IO.File]::ReadAllBytes($stagedExe)
+              $subsystem = [BitConverter]::ToInt16($bytes, $peOffset + 24 + 68)
+              $dllChar = [BitConverter]::ToInt16($bytes, $peOffset + 24 + 70)
+              Write-Host "Verified Subsystem after editbin: $subsystem"
+              Write-Host "Verified DllCharacteristics after editbin: 0x$($dllChar.ToString('X4'))"
+          }
+
           Get-ChildItem -Path $staging
 
       - name: Create Test Certificate and Pack MSIX

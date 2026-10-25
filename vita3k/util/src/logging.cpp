@@ -88,19 +88,26 @@ ExitCode init(const Root &root_paths, bool use_stdout) {
 #ifdef _WIN32
     sinks.push_back(std::make_shared<spdlog::sinks::msvc_sink_mt>());
 #endif
-    if (use_stdout)
-#ifdef __ANDROID__
+    if (use_stdout) {
+#if defined(_WIN32)
+        // On Windows, only attach console sink if an actual console exists
+        if (GetConsoleWindow() != nullptr) {
+            sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
+        }
+#elif defined(__ANDROID__)
         sinks.push_back(std::make_shared<spdlog::sinks::android_sink_mt>("Vita3K"));
 #else
         sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
 #endif
+    }
 
 #ifndef __ANDROID__
     sinks.push_back(std::make_shared<callback_sink_mt>());
 #endif
 
-    if (add_sink(root_paths.get_log_path() / LOG_FILE_NAME) != Success)
-        return InitConfigFailed;
+    boost::system::error_code ec;
+    fs::create_directories(root_paths.get_log_path(), ec);
+    add_sink(root_paths.get_log_path() / LOG_FILE_NAME);
 
     spdlog::set_error_handler([](const std::string &msg) {
 #ifdef _WIN32
@@ -111,9 +118,11 @@ ExitCode init(const Root &root_paths, bool use_stdout) {
     });
 
 #ifdef _WIN32
-    // set console codepage to UTF-8
-    SetConsoleOutputCP(65001);
-    SetConsoleTitle("Vita3K PSVita Emulator");
+    // set console codepage to UTF-8 only if console is attached
+    if (GetConsoleWindow() != nullptr) {
+        SetConsoleOutputCP(65001);
+        SetConsoleTitle("Vita3K PSVita Emulator");
+    }
 #endif
 
 #ifdef __ANDROID__
@@ -150,10 +159,15 @@ void set_level(spdlog::level::level_enum log_level) {
 
 ExitCode add_sink(const fs::path &log_path) {
     try {
+        boost::system::error_code ec;
+        fs::create_directories(log_path.parent_path(), ec);
         sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.generic_path().native(), true));
-    } catch (const spdlog::spdlog_ex &ex) {
+    } catch (const std::exception &ex) {
+#ifdef _WIN32
+        OutputDebugStringA(("Vita3K: File log initialization note: " + std::string(ex.what()) + "\n").c_str());
+#else
         std::cerr << "File log initialization failed: " << ex.what() << std::endl;
-        return InitConfigFailed;
+#endif
     }
 
 #ifdef _MSC_VER
