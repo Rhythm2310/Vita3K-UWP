@@ -47,6 +47,9 @@
 
 // Xbox Series FrameHost binding SDL_Window to Direct3D 12
 class XboxFrameHost final : public renderer::FrameHost {
+private:
+    SDL_Window *m_window = nullptr;
+
 public:
     explicit XboxFrameHost(SDL_Window *win) : m_window(win) {}
 
@@ -188,8 +191,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    apply_renderer_config(emuenv);
-    if (!late_init(emuenv)) {
+    app::apply_renderer_config(emuenv);
+    if (!app::late_init(emuenv)) {
         LOG_ERROR("Late init failed.");
         return 1;
     }
@@ -200,7 +203,8 @@ int main(int argc, char *argv[]) {
     auto refresh_osd_library = [&]() {
         std::vector<renderer::d3d12::OsdAppInfo> osd_apps;
         for (const auto &a : emuenv.app.apps_list.apps) {
-            osd_apps.push_back({ a.title_id, a.title_name, a.category, a.app_ver });
+            std::string display_name = a.title.empty() ? a.title_id : a.title;
+            osd_apps.push_back({ a.title_id, display_name, a.category, a.app_ver });
         }
         d3d12.overlay_renderer.set_installed_apps(osd_apps);
     };
@@ -348,7 +352,7 @@ int main(int argc, char *argv[]) {
 
         if (!app_running) {
             // Dashboard mode: render OSD at 60 FPS
-            d3d12.render_frame(emuenv.display, emuenv.gxm, *emuenv.mem);
+            d3d12.render_frame(emuenv.display, emuenv.gxm, emuenv.mem);
             d3d12.swap_window();
             SDL_Delay(16); // ~60 FPS
         } else {
