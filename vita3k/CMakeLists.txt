@@ -173,6 +173,7 @@ target_link_libraries(vita3k PRIVATE
 	SDL3::SDL3
 	pugixml::pugixml
 	stb
+	d3d12ma
 )
 
 set_target_properties(vita3k PROPERTIES OUTPUT_NAME Vita3K)

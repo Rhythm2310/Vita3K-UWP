@@ -31,5 +31,5 @@ add_library(
 )
 
 target_include_directories(renderer PUBLIC include)
-target_link_libraries(renderer PUBLIC display mem stb shader threads config util overlay)
-target_link_libraries(renderer PRIVATE dialog ddspp SDL3::SDL3 stb ffmpeg xxHash::xxhash concurrentqueue d3d12 dxgi dxguid d3dcompiler d3d12ma)
+target_link_libraries(renderer PUBLIC display mem stb shader threads config util overlay d3d12ma)
+target_link_libraries(renderer PRIVATE dialog ddspp SDL3::SDL3 stb ffmpeg xxHash::xxhash concurrentqueue d3d12 dxgi dxguid d3dcompiler)

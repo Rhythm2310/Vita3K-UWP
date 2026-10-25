@@ -72,7 +72,7 @@ jobs:
       - name: Build Vita3K UWP (Detailed MSVC Logs)
         shell: pwsh
         run: |
-          cmake --build build --config Release --verbose -- /verbosity:detailed /fl /flp:logfile=build_detailed.log
+          cmake --build build --config Release --verbose -- /m /verbosity:detailed /fl /flp:logfile=build_detailed.log
 
       - name: Upload Detailed Build & Compiler Logs
         if: always()
