@@ -141,6 +141,98 @@ bool D3D12State::create(std::unique_ptr<renderer::State> &state, const Config &c
         return false;
     }
 
+    // Create SwapChain or Fallback Offscreen Render Targets
+    void *window_handle = nullptr;
+    if (this->frame) {
+        auto handle = this->frame->handle();
+        if (std::holds_alternative<Win32DisplayHandle>(handle)) {
+            window_handle = std::get<Win32DisplayHandle>(handle).hwnd;
+        }
+    }
+
+    if (window_handle) {
+        DXGI_SWAP_CHAIN_DESC1 sc_desc = {};
+        sc_desc.Width = 1920;
+        sc_desc.Height = 1080;
+        sc_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sc_desc.Stereo = FALSE;
+        sc_desc.SampleDesc.Count = 1;
+        sc_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sc_desc.BufferCount = FRAME_COUNT;
+        sc_desc.Scaling = DXGI_SCALING_STRETCH;
+        sc_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        sc_desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+        sc_desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+
+        ComPtr<IDXGISwapChain1> sc1;
+        hr = dxgi_factory->CreateSwapChainForCoreWindow(
+            command_queue.Get(),
+            reinterpret_cast<IUnknown *>(window_handle),
+            &sc_desc,
+            nullptr,
+            &sc1
+        );
+        if (FAILED(hr)) {
+            hr = dxgi_factory->CreateSwapChainForHwnd(
+                command_queue.Get(),
+                static_cast<HWND>(window_handle),
+                &sc_desc,
+                nullptr,
+                nullptr,
+                &sc1
+            );
+        }
+
+        if (SUCCEEDED(hr) && sc1) {
+            sc1.As(&swapchain);
+            for (uint32_t i = 0; i < FRAME_COUNT; ++i) {
+                hr = swapchain->GetBuffer(i, IID_PPV_ARGS(&back_buffers[i]));
+                if (SUCCEEDED(hr)) {
+                    D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = rtv_heap->GetCPUDescriptorHandleForHeapStart();
+                    rtv_handle.ptr += i * rtv_descriptor_size;
+                    device->CreateRenderTargetView(back_buffers[i].Get(), nullptr, rtv_handle);
+                }
+            }
+            LOG_INFO("D3D12 SwapChain created (1920x1080 FLIP_DISCARD with VRR support)");
+        }
+    }
+
+    // Fallback offscreen render targets if headless, CI, or windowless execution
+    if (!back_buffers[0]) {
+        D3D12_RESOURCE_DESC rt_desc = {};
+        rt_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        rt_desc.Width = 1920;
+        rt_desc.Height = 1080;
+        rt_desc.DepthOrArraySize = 1;
+        rt_desc.MipLevels = 1;
+        rt_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        rt_desc.SampleDesc.Count = 1;
+        rt_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+        rt_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+        D3D12_CLEAR_VALUE clear_val = {};
+        clear_val.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        clear_val.Color[0] = 0.05f; clear_val.Color[1] = 0.05f; clear_val.Color[2] = 0.08f; clear_val.Color[3] = 1.0f;
+
+        D3D12_HEAP_PROPERTIES heap_props = {};
+        heap_props.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+        for (uint32_t i = 0; i < FRAME_COUNT; ++i) {
+            device->CreateCommittedResource(
+                &heap_props,
+                D3D12_HEAP_FLAG_NONE,
+                &rt_desc,
+                D3D12_RESOURCE_STATE_PRESENT,
+                &clear_val,
+                IID_PPV_ARGS(&back_buffers[i])
+            );
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = rtv_heap->GetCPUDescriptorHandleForHeapStart();
+            rtv_handle.ptr += i * rtv_descriptor_size;
+            device->CreateRenderTargetView(back_buffers[i].Get(), nullptr, rtv_handle);
+        }
+        LOG_INFO("Created fallback offscreen render targets for headless/CI execution");
+    }
+
     // Static Root Signature:
     // Root Param 0: Vertex CBV (b0)
     // Root Param 1: Pixel CBV (b1)
@@ -254,7 +346,7 @@ void D3D12State::render_frame(DisplayState &display, const GxmState &gxm, MemSta
     direct_command_list->Reset(frame.command_allocator.Get(), nullptr);
 
     // If backbuffers exist, render screen and overlay
-    if (swapchain && back_buffers[frame_index]) {
+    if (back_buffers[frame_index]) {
         D3D12_RESOURCE_BARRIER barrier = {};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
         barrier.Transition.pResource = back_buffers[frame_index].Get();
@@ -266,14 +358,14 @@ void D3D12State::render_frame(DisplayState &display, const GxmState &gxm, MemSta
         D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = rtv_heap->GetCPUDescriptorHandleForHeapStart();
         rtv_handle.ptr += frame_index * rtv_descriptor_size;
 
-        const float clear_color[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        const float clear_color[] = { 0.04f, 0.05f, 0.07f, 1.0f };
         direct_command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, nullptr);
 
         // Screen rendering pass (Vita FB -> Backbuffer with scaling)
         screen_renderer.render(direct_command_list.Get(), nullptr, rtv_handle);
 
-        // Overlay rendering pass (UI / notification)
-        overlay_renderer.render(direct_command_list.Get());
+        // Overlay rendering pass (Xbox Series OSD / Quick Menu / Telemetry)
+        overlay_renderer.render(direct_command_list.Get(), rtv_handle, 1920.0f, 1080.0f);
 
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
@@ -287,7 +379,9 @@ void D3D12State::render_frame(DisplayState &display, const GxmState &gxm, MemSta
 
 void D3D12State::swap_window() {
     if (swapchain) {
-        swapchain->Present(1, 0);
+        UINT sync_interval = overlay_renderer.is_vrr_enabled() ? 0 : 1;
+        UINT flags = (sync_interval == 0) ? DXGI_PRESENT_ALLOW_TEARING : 0;
+        swapchain->Present(sync_interval, flags);
     }
     move_to_next_frame();
 }

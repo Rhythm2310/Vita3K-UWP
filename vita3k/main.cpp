@@ -15,6 +15,9 @@
 #include <packages/license.h>
 #include <packages/pkg.h>
 #include <packages/sfo.h>
+#include <renderer/d3d12/state.h>
+#include <renderer/frame_host.h>
+#include <renderer/functions.h>
 #include <shader/spirv_recompiler.h>
 #include <util/log.h>
 #include <util/string_utils.h>
@@ -35,8 +38,44 @@
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_main.h>
 
+#include <algorithm>
 #include <cstdlib>
+#include <memory>
 #include <optional>
+#include <thread>
+#include <vector>
+
+// Xbox Series FrameHost binding SDL_Window to Direct3D 12
+class XboxFrameHost final : public renderer::FrameHost {
+public:
+    explicit XboxFrameHost(SDL_Window *win) : m_window(win) {}
+
+    renderer::DisplayHandle handle() const override {
+        if (!m_window) return renderer::Win32DisplayHandle{ nullptr };
+        auto props = SDL_GetWindowProperties(m_window);
+        void *hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+        if (!hwnd) {
+            hwnd = SDL_GetPointerProperty(props, "SDL.window.winrt.corewindow", nullptr);
+        }
+        return renderer::Win32DisplayHandle{ hwnd };
+    }
+
+    int drawable_width() const override {
+        int w = 1920, h = 1080;
+        if (m_window) SDL_GetWindowSizeInPixels(m_window, &w, &h);
+        return w;
+    }
+
+    int drawable_height() const override {
+        int w = 1920, h = 1080;
+        if (m_window) SDL_GetWindowSizeInPixels(m_window, &w, &h);
+        return h;
+    }
+
+    std::vector<std::string> font_dirs() const override {
+        return {};
+    }
+};
 
 int main(int argc, char *argv[]) {
 #ifdef TRACY_ENABLE
@@ -116,6 +155,13 @@ int main(int argc, char *argv[]) {
     LOG_INFO("CPU: {} | {} Threads | {} GHz", CppCommon::CPU::Architecture(), CppCommon::CPU::LogicalCores(), static_cast<float>(CppCommon::CPU::ClockSpeed()) / 1000.f);
     LOG_INFO("Available RAM: {} MiB", SDL_GetSystemRAM());
 
+    // Create main Xbox presentation window
+    SDL_Window *window = SDL_CreateWindow("Vita3K", 1920, 1080, SDL_WINDOW_FULLSCREEN);
+    if (!window) {
+        LOG_WARN("SDL_CreateWindow fullscreen failed, trying windowed: {}", SDL_GetError());
+        window = SDL_CreateWindow("Vita3K", 1920, 1080, 0);
+    }
+
     if (!app::init(emuenv, cfg, root_paths)) {
         LOG_ERROR("Emulated environment initialization failed.");
         return 1;
@@ -135,27 +181,192 @@ int main(int argc, char *argv[]) {
 
     app::load_users(emuenv);
 
-    // Boot app if specified
-    std::string title_to_boot;
-    if (cfg.run_app_path.has_value() && !cfg.run_app_path->empty()) {
-        title_to_boot = *cfg.run_app_path;
-    } else if (!emuenv.app.apps_list.apps.empty()) {
-        title_to_boot = emuenv.app.apps_list.apps.front().title_id;
-        cfg.run_app_path = title_to_boot;
+    // Initialize Direct3D 12 graphics backend
+    XboxFrameHost frame_host(window);
+    if (!renderer::init(frame_host, emuenv.renderer, emuenv.backend_renderer, emuenv.cfg, emuenv.get_root_paths())) {
+        LOG_ERROR("Failed to initialize Direct3D 12 renderer.");
+        return 1;
     }
 
-    if (!title_to_boot.empty()) {
+    apply_renderer_config(emuenv);
+    if (!late_init(emuenv)) {
+        LOG_ERROR("Late init failed.");
+        return 1;
+    }
+
+    auto &d3d12 = dynamic_cast<renderer::d3d12::D3D12State &>(*emuenv.renderer);
+    d3d12.overlay_renderer.set_vita_fs_path(cfg.get_vita_fs_path());
+
+    auto refresh_osd_library = [&]() {
+        std::vector<renderer::d3d12::OsdAppInfo> osd_apps;
+        for (const auto &a : emuenv.app.apps_list.apps) {
+            osd_apps.push_back({ a.title_id, a.title_name, a.category, a.app_ver });
+        }
+        d3d12.overlay_renderer.set_installed_apps(osd_apps);
+    };
+    refresh_osd_library();
+
+    bool running = true;
+    bool app_running = false;
+
+    // Connect OSD Firmware and Package installer callbacks
+    d3d12.overlay_renderer.on_install_firmware = [&](const std::string &pup_path) {
+        LOG_INFO("OSD: Triggered firmware install from: {}", pup_path);
+        d3d12.overlay_renderer.set_install_in_progress(true);
+        d3d12.overlay_renderer.set_install_progress(5, "Reading PUP archive...");
+
+        std::thread worker([&d3d12, &emuenv, pup_path, refresh_osd_library]() {
+            try {
+                std::string fw_ver = install_pup(
+                    emuenv.vita_fs_path,
+                    pup_path,
+                    [&d3d12](uint32_t pct) {
+                        std::string msg = "Installing firmware system partitions...";
+                        if (pct <= 10) msg = "Extracting PUP archive...";
+                        else if (pct <= 20) msg = "Verifying package signatures...";
+                        else if (pct <= 30) msg = "Decrypting firmware payloads (SCE keys)...";
+                        else if (pct <= 70) msg = "Extracting vs0, os0, sa0 system modules...";
+                        else if (pct >= 100) msg = "Firmware extraction complete!";
+                        d3d12.overlay_renderer.set_install_progress(pct, msg);
+                    }
+                );
+                d3d12.overlay_renderer.set_firmware_installed(true);
+                d3d12.overlay_renderer.set_install_progress(100, "PS Vita Firmware v" + (fw_ver.empty() ? std::string("3.65") : fw_ver) + " successfully installed!");
+                app::init_apps_list(emuenv);
+                refresh_osd_library();
+            } catch (const std::exception &e) {
+                d3d12.overlay_renderer.set_install_progress(0, std::string("Install Error: ") + e.what());
+            }
+            d3d12.overlay_renderer.set_install_in_progress(false);
+        });
+        worker.detach();
+    };
+
+    d3d12.overlay_renderer.on_install_vpk = [&](const std::string &vpk_path) {
+        LOG_INFO("OSD: Triggered VPK install from: {}", vpk_path);
+        d3d12.overlay_renderer.set_install_in_progress(true);
+        d3d12.overlay_renderer.set_install_progress(10, "Extracting package contents...");
+
+        std::thread worker([&d3d12, &emuenv, vpk_path, refresh_osd_library]() {
+            try {
+                install_archive(emuenv, fs::path(vpk_path), [&d3d12](ArchiveContents contents) {
+                    if (contents.progress.has_value()) {
+                        uint32_t pct = static_cast<uint32_t>(*contents.progress * 100.0f);
+                        d3d12.overlay_renderer.set_install_progress(pct, "Extracting package (" + std::to_string(pct) + "%)...");
+                    }
+                });
+                d3d12.overlay_renderer.set_install_progress(100, "Package installed successfully!");
+                app::init_apps_list(emuenv);
+                refresh_osd_library();
+            } catch (const std::exception &e) {
+                d3d12.overlay_renderer.set_install_progress(0, std::string("Install Error: ") + e.what());
+            }
+            d3d12.overlay_renderer.set_install_in_progress(false);
+        });
+        worker.detach();
+    };
+
+    d3d12.overlay_renderer.on_launch_app = [&](const std::string &title_id) {
+        LOG_INFO("OSD: Launching title {}", title_id);
         int32_t main_module_id = 0;
-        LOG_INFO("Launching title: {}", title_to_boot);
-        AppLaunchRequest request{ .app_path = title_to_boot };
+        AppLaunchRequest request{ .app_path = title_id };
         ExitCode load_code = load_app(main_module_id, emuenv, request);
         if (load_code == Success) {
             run_app(emuenv, main_module_id, request);
+            d3d12.overlay_renderer.set_osd_open(false);
+            d3d12.overlay_renderer.set_in_game(true);
+            renderer::start_render_thread(*emuenv.renderer, emuenv.display, emuenv.gxm, emuenv.mem, emuenv.cfg);
+            app_running = true;
         } else {
-            LOG_ERROR("Failed to load application {}", title_to_boot);
+            LOG_ERROR("Failed to load application {}", title_id);
+            d3d12.overlay_renderer.set_osd_open(true);
+            d3d12.overlay_renderer.set_in_game(false);
         }
-    } else {
-        LOG_INFO("Vita3K ready. No applications installed yet in ux0:app.");
+    };
+
+    d3d12.overlay_renderer.on_restart_app = [&]() {
+        LOG_INFO("OSD: Restart requested");
+    };
+
+    d3d12.overlay_renderer.on_exit_to_dashboard = [&]() {
+        LOG_INFO("OSD: Exiting to Vita3K Dashboard");
+        if (app_running) {
+            renderer::stop_render_thread(*emuenv.renderer);
+            app_running = false;
+        }
+        d3d12.overlay_renderer.set_in_game(false);
+        d3d12.overlay_renderer.set_osd_open(true);
+        refresh_osd_library();
+    };
+
+    d3d12.overlay_renderer.on_exit_app = [&]() {
+        LOG_INFO("OSD: Exiting Vita3K to Xbox Dashboard");
+        running = false;
+    };
+
+    SDL_Gamepad *gamepad = nullptr;
+    uint64_t last_time = SDL_GetTicks();
+    uint64_t fps_last_calc = last_time;
+    uint32_t frame_counter = 0;
+
+    // Auto-boot app if specified via CLI
+    if (cfg.run_app_path.has_value() && !cfg.run_app_path->empty()) {
+        d3d12.overlay_renderer.on_launch_app(*cfg.run_app_path);
+    }
+
+    // Main Interactive Loop (Xbox Series S 60 FPS Presentation)
+    while (running) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_EVENT_QUIT) {
+                running = false;
+            } else if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
+                if (!gamepad) gamepad = SDL_OpenGamepad(event.gdevice.which);
+            } else if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {
+                if (gamepad && SDL_GetGamepadID(gamepad) == event.gdevice.which) {
+                    SDL_CloseGamepad(gamepad);
+                    gamepad = nullptr;
+                }
+            }
+        }
+
+        uint64_t now = SDL_GetTicks();
+        float dt = (now - last_time) / 1000.0f;
+        last_time = now;
+
+        frame_counter++;
+        if (now - fps_last_calc >= 500) {
+            float fps = (frame_counter * 1000.0f) / (now - fps_last_calc);
+            float ft = 1000.0f / (fps > 0.0f ? fps : 60.0f);
+            d3d12.overlay_renderer.update_telemetry(fps, ft);
+            frame_counter = 0;
+            fps_last_calc = now;
+        }
+
+        // Update OSD gamepad inputs
+        d3d12.overlay_renderer.update_gamepad_input(gamepad, dt);
+
+        if (!app_running) {
+            // Dashboard mode: render OSD at 60 FPS
+            d3d12.render_frame(emuenv.display, emuenv.gxm, *emuenv.mem);
+            d3d12.swap_window();
+            SDL_Delay(16); // ~60 FPS
+        } else {
+            SDL_Delay(10);
+        }
+    }
+
+    if (app_running) {
+        renderer::stop_render_thread(*emuenv.renderer);
+    }
+
+    if (gamepad) {
+        SDL_CloseGamepad(gamepad);
+    }
+
+    emuenv.renderer->cleanup();
+    if (window) {
+        SDL_DestroyWindow(window);
     }
 
 #ifdef _WIN32
