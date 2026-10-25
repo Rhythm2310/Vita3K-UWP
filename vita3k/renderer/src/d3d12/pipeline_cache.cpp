@@ -9,7 +9,17 @@ ComPtr<ID3D12PipelineState> PipelineCache::get_or_create_pipeline(
     ID3D12RootSignature *root_signature,
     const PipelineKey &key) {
 
-    std::lock_guard<std::mutex> lock(m_mutex);
+    // Fast path: concurrent read lock for cache hits
+    {
+        std::shared_lock<std::shared_mutex> read_lock(m_mutex);
+        auto it = m_pipelines.find(key);
+        if (it != m_pipelines.end()) {
+            return it->second;
+        }
+    }
+
+    // Slow path: exclusive write lock to compile and cache PSO
+    std::unique_lock<std::shared_mutex> write_lock(m_mutex);
     auto it = m_pipelines.find(key);
     if (it != m_pipelines.end()) {
         return it->second;
@@ -92,7 +102,7 @@ ComPtr<ID3D12PipelineState> PipelineCache::get_or_create_pipeline(
 }
 
 void PipelineCache::clear() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::unique_lock<std::shared_mutex> write_lock(m_mutex);
     m_pipelines.clear();
 }
 

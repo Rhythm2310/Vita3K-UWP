@@ -68,11 +68,29 @@ bool D3D12State::create(std::unique_ptr<renderer::State> &state, const Config &c
     WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, adapter_desc, sizeof(adapter_desc), nullptr, nullptr);
     LOG_INFO("Selected GPU: {} (Dedicated Video Memory: {} MB)", adapter_desc, desc.DedicatedVideoMemory / (1024 * 1024));
 
-    hr = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device));
-    if (FAILED(hr)) {
+    const D3D_FEATURE_LEVEL feature_levels[] = {
+        D3D_FEATURE_LEVEL_12_2,
+        D3D_FEATURE_LEVEL_12_1,
+        D3D_FEATURE_LEVEL_12_0,
+        D3D_FEATURE_LEVEL_11_1,
+        D3D_FEATURE_LEVEL_11_0
+    };
+
+    D3D_FEATURE_LEVEL max_supported_fl = D3D_FEATURE_LEVEL_11_0;
+    for (auto fl : feature_levels) {
+        hr = D3D12CreateDevice(adapter.Get(), fl, IID_PPV_ARGS(&device));
+        if (SUCCEEDED(hr)) {
+            max_supported_fl = fl;
+            break;
+        }
+    }
+
+    if (!device) {
         LOG_ERROR("Failed to create D3D12 device: 0x{:08X}", static_cast<uint32_t>(hr));
         return false;
     }
+
+    LOG_INFO("D3D12 Device created with Feature Level 0x{:04X}", static_cast<uint32_t>(max_supported_fl));
 
     // Direct command queue
     D3D12_COMMAND_QUEUE_DESC queue_desc = {};

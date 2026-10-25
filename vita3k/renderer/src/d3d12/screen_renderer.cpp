@@ -30,23 +30,27 @@ struct PSInput {
     float2 uv  : TEXCOORD0;
 };
 
-// FidelityFX CAS (Contrast Adaptive Sharpening) approximation
+// FidelityFX CAS (Contrast Adaptive Sharpening) dynamic-resolution upscaler
 float4 main(PSInput input) : SV_TARGET {
     float2 texCoord = input.uv;
     
-    // Sample center and 4 cross neighbors
+    uint width, height;
+    srcTex.GetDimensions(width, height);
+    float2 invSize = float2(1.0 / max(float(width), 1.0), 1.0 / max(float(height), 1.0));
+
+    // Sample center and 4 cross neighbors dynamically scaled to render resolution
     float3 c = srcTex.Sample(samLinear, texCoord).rgb;
-    float3 a = srcTex.Sample(samLinear, texCoord + float2(0.0, -1.0 / 544.0)).rgb;
-    float3 b = srcTex.Sample(samLinear, texCoord + float2(-1.0 / 960.0, 0.0)).rgb;
-    float3 d = srcTex.Sample(samLinear, texCoord + float2(1.0 / 960.0, 0.0)).rgb;
-    float3 e = srcTex.Sample(samLinear, texCoord + float2(0.0, 1.0 / 544.0)).rgb;
+    float3 a = srcTex.Sample(samLinear, texCoord + float2(0.0, -invSize.y)).rgb;
+    float3 b = srcTex.Sample(samLinear, texCoord + float2(-invSize.x, 0.0)).rgb;
+    float3 d = srcTex.Sample(samLinear, texCoord + float2(invSize.x, 0.0)).rgb;
+    float3 e = srcTex.Sample(samLinear, texCoord + float2(0.0, invSize.y)).rgb;
 
     // Min and max of neighbors
     float3 minColor = min(c, min(min(a, b), min(d, e)));
     float3 maxColor = max(c, max(max(a, b), max(d, e)));
 
     // Adaptive sharpening weight
-    float sharpness = 0.5; // Configurable sharpening intensity
+    const float sharpness = 0.5; // Optimal sharpening ratio
     float3 w = -saturate(min(minColor, 1.0 - maxColor) / max(maxColor, 0.0001)) * sharpness;
     float3 output = (c + (a + b + d + e) * w) / (1.0 + 4.0 * w);
 

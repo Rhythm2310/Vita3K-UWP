@@ -60,6 +60,13 @@ if(MSVC)
 	string(REPLACE "/Zi" "/Z7" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 	string(REPLACE "/Zi" "/Z7" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 	string(REPLACE "/Zi" "/Z7" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+
+	# Xbox Series S & Windows x64 Release Optimization: AVX2, intrinsic functions, favor fast code
+	add_compile_options("$<$<CONFIG:Release>:/O2>")
+	add_compile_options("$<$<CONFIG:Release>:/Oi>")
+	add_compile_options("$<$<CONFIG:Release>:/Ot>")
+	add_compile_options("$<$<CONFIG:Release>:/Gy>")
+	add_compile_options("$<$<CONFIG:Release>:/arch:AVX2>")
 endif()
 
 enable_testing()

@@ -2,9 +2,9 @@
 #pragma once
 
 #include <renderer/d3d12/types.h>
-#include <map>
-#include <mutex>
+#include <shared_mutex>
 #include <string>
+#include <unordered_map>
 
 namespace renderer::d3d12 {
 
@@ -17,8 +17,32 @@ struct PipelineKey {
     uint32_t depth_state_hash = 0;
     uint32_t rasterizer_state_hash = 0;
 
-    bool operator<(const PipelineKey &other) const {
-        return memcmp(this, &other, sizeof(PipelineKey)) < 0;
+    bool operator==(const PipelineKey &other) const noexcept {
+        return vertex_program == other.vertex_program &&
+               fragment_program == other.fragment_program &&
+               rtv_format == other.rtv_format &&
+               dsv_format == other.dsv_format &&
+               blend_state_hash == other.blend_state_hash &&
+               depth_state_hash == other.depth_state_hash &&
+               rasterizer_state_hash == other.rasterizer_state_hash;
+    }
+};
+
+struct PipelineKeyHash {
+    size_t operator()(const PipelineKey &k) const noexcept {
+        size_t h = 14695981039346656037ULL;
+        auto hash_combine = [&h](size_t val) noexcept {
+            h ^= val;
+            h *= 1099511628211ULL;
+        };
+        hash_combine(reinterpret_cast<size_t>(k.vertex_program));
+        hash_combine(reinterpret_cast<size_t>(k.fragment_program));
+        hash_combine(static_cast<size_t>(k.rtv_format));
+        hash_combine(static_cast<size_t>(k.dsv_format));
+        hash_combine(static_cast<size_t>(k.blend_state_hash));
+        hash_combine(static_cast<size_t>(k.depth_state_hash));
+        hash_combine(static_cast<size_t>(k.rasterizer_state_hash));
+        return h;
     }
 };
 
@@ -35,8 +59,8 @@ public:
     void clear();
 
 private:
-    std::mutex m_mutex;
-    std::map<PipelineKey, ComPtr<ID3D12PipelineState>> m_pipelines;
+    std::shared_mutex m_mutex;
+    std::unordered_map<PipelineKey, ComPtr<ID3D12PipelineState>, PipelineKeyHash> m_pipelines;
 };
 
 } // namespace renderer::d3d12

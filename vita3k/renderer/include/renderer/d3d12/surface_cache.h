@@ -3,8 +3,9 @@
 
 #include <renderer/d3d12/types.h>
 #include <renderer/texture_cache.h>
-#include <map>
 #include <memory>
+#include <mutex>
+#include <unordered_map>
 
 namespace renderer::d3d12 {
 
@@ -17,7 +18,8 @@ public:
     void clear();
 
 private:
-    std::map<uint64_t, std::unique_ptr<D3D12Texture>> m_surfaces;
+    std::mutex m_mutex;
+    std::unordered_map<uint64_t, std::unique_ptr<D3D12Texture>> m_surfaces;
 };
 
 class D3D12TextureCache : public TextureCache {

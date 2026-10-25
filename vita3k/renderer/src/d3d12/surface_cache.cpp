@@ -14,6 +14,7 @@ D3D12Texture *D3D12SurfaceCache::get_or_create_surface(
                    (static_cast<uint64_t>(height) << 16) |
                    static_cast<uint64_t>(format);
 
+    std::lock_guard<std::mutex> lock(m_mutex);
     auto it = m_surfaces.find(key);
     if (it != m_surfaces.end()) {
         return it->second.get();
@@ -59,6 +60,7 @@ D3D12Texture *D3D12SurfaceCache::get_or_create_surface(
 }
 
 void D3D12SurfaceCache::clear() {
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_surfaces.clear();
 }
 
