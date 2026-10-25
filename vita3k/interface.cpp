@@ -48,6 +48,7 @@
 #include <util/vita_theme_utils.h>
 
 #include <gdbstub/functions.h>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
 #if USE_DISCORD
