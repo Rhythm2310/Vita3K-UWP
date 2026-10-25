@@ -148,7 +148,7 @@ bool ScreenRenderer::init(ID3D12Device *device, DXGI_FORMAT target_format) {
 }
 
 void ScreenRenderer::render(ID3D12GraphicsCommandList *command_list, ID3D12Resource *src_texture, D3D12_CPU_DESCRIPTOR_HANDLE rtv_target) {
-    if (!command_list || !s_screen_pso || !s_screen_root_sig) return;
+    if (!command_list || !src_texture || !s_screen_pso || !s_screen_root_sig) return;
 
     command_list->SetGraphicsRootSignature(s_screen_root_sig.Get());
     command_list->SetPipelineState(s_screen_pso.Get());

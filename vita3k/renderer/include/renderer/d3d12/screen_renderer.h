@@ -104,6 +104,9 @@ private:
     bool m_prev_button_guide = false;
     bool m_prev_button_view = false;
     bool m_prev_button_menu = false;
+    bool m_prev_button_south = false;
+    bool m_prev_button_east = false;
+    bool m_prev_button_west = false;
 
     // D3D12 rendering resources
     ComPtr<ID3D12Device> m_device;

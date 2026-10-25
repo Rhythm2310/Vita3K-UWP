@@ -951,6 +951,10 @@ void OverlayRenderer::update_gamepad_input(SDL_Gamepad *gamepad, float dt) {
 
     if (!m_osd_open) return;
 
+    bool btn_south = SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH);
+    bool btn_east  = SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST);
+    bool btn_west  = SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_WEST);
+
     // Quick Menu navigation in-game
     if (m_in_game) {
         if (m_input_repeat_timer <= 0.0f) {
@@ -965,7 +969,7 @@ void OverlayRenderer::update_gamepad_input(SDL_Gamepad *gamepad, float dt) {
             }
         }
 
-        if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH)) { // A button
+        if (btn_south && !m_prev_button_south) { // A button
             if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 25000, 25000, 100);
             if (m_quick_menu_index == 0) { // Resume
                 set_osd_open(false);
@@ -978,9 +982,12 @@ void OverlayRenderer::update_gamepad_input(SDL_Gamepad *gamepad, float dt) {
             } else if (m_quick_menu_index == 4) { // Exit app
                 if (on_exit_app) on_exit_app();
             }
-        } else if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST)) { // B button
+        } else if (btn_east && !m_prev_button_east) { // B button
             set_osd_open(false);
         }
+        m_prev_button_south = btn_south;
+        m_prev_button_east  = btn_east;
+        m_prev_button_west  = btn_west;
         return;
     }
 
@@ -1034,13 +1041,13 @@ void OverlayRenderer::update_gamepad_input(SDL_Gamepad *gamepad, float dt) {
     }
 
     // Rescan USB Storage (X button)
-    if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_WEST)) {
+    if (btn_west && !m_prev_button_west) {
         scan_storage();
         if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 15000, 15000, 80);
     }
 
     // Action Execution (A button)
-    if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH)) {
+    if (btn_south && !m_prev_button_south) {
         if (m_trigger_rumble_enabled) SDL_RumbleGamepadTriggers(gamepad, 30000, 30000, 120);
 
         if (m_active_tab == 0 && !m_installed_apps.empty()) { // Launch Game
@@ -1063,6 +1070,10 @@ void OverlayRenderer::update_gamepad_input(SDL_Gamepad *gamepad, float dt) {
             }
         }
     }
+
+    m_prev_button_south = btn_south;
+    m_prev_button_east  = btn_east;
+    m_prev_button_west  = btn_west;
 }
 
 } // namespace renderer::d3d12

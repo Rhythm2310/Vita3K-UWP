@@ -67,6 +67,8 @@ if(MSVC)
 	add_compile_options("$<$<CONFIG:Release>:/Ot>")
 	add_compile_options("$<$<CONFIG:Release>:/Gy>")
 	add_compile_options("$<$<CONFIG:Release>:/arch:AVX2>")
+	add_compile_options("$<$<CONFIG:Release>:/favor:AMD64>")
+	add_compile_options("$<$<CONFIG:Release>:/Ob3>")
 endif()
 
 enable_testing()
