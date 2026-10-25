@@ -105,6 +105,28 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$staging/Assets" | Out-Null
           Copy-Item "vita3k/uwp/Assets/*" -Destination "$staging/Assets" -Force
           
+          # Bundle MSVC C++ Runtime & D3DCompiler DLLs for standalone execution on Xbox Dev Mode
+          Write-Host "--- Bundling App-Local Runtime Dependencies for Xbox Dev Mode ---"
+          $crtDlls = Get-ChildItem -Path "C:\Windows\System32" -Filter "*.dll" | Where-Object { $_.Name -match "^(vcruntime140|msvcp140|d3dcompiler_47)" }
+          foreach ($dll in $crtDlls) {
+              Write-Host "Bundled: $($dll.Name) ($($dll.Length) bytes)"
+              Copy-Item $dll.FullName -Destination $staging -Force
+          }
+          $vsRedist = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*x64*Microsoft.VC143.CRT*" }
+          if ($vsRedist) {
+              foreach ($dll in $vsRedist) {
+                  Write-Host "Bundled from VS Redist: $($dll.Name)"
+                  Copy-Item $dll.FullName -Destination $staging -Force
+              }
+          }
+          $d3d = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "d3dcompiler_47.dll" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
+          if ($d3d) {
+              Write-Host "Bundled Windows SDK D3DCompiler: $($d3d.FullName)"
+              Copy-Item $d3d.FullName -Destination $staging -Force
+          }
+          Write-Host "All bundled DLLs in package layout:"
+          Get-ChildItem -Path $staging -Filter "*.dll" | ForEach-Object { Write-Host "  -> $($_.Name) ($($_.Length) bytes)" }
+
           # Copy data and shaders
           if (Test-Path "vita3k/shaders-builtin") {
               Copy-Item "vita3k/shaders-builtin" -Destination "$staging/shaders-builtin" -Recurse -Force

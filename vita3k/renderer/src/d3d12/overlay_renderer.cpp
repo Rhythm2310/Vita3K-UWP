@@ -1,9 +1,9 @@
 // Vita3K emulator project - Xbox Series S UWP D3D12 Port
 #include <renderer/d3d12/screen_renderer.h>
 #include "font_8x8.h"
+#include "osd_shaders_bytecode.h"
 
 #include <util/log.h>
-#include <d3dcompiler.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gamepad.h>
@@ -58,50 +58,6 @@ static const char *s_res_names[] = {
     "1440p QHD (2.66x)",
     "4K UHD (4.0x)"
 };
-
-static const char *s_osd_vs = R"(
-cbuffer ScreenCB : register(b0) {
-    float2 u_screen_size;
-};
-
-struct VSInput {
-    float2 pos   : POSITION;
-    float2 uv    : TEXCOORD0;
-    float4 color : COLOR0;
-};
-
-struct VSOutput {
-    float4 pos   : SV_POSITION;
-    float2 uv    : TEXCOORD0;
-    float4 color : COLOR0;
-};
-
-VSOutput main(VSInput input) {
-    VSOutput output;
-    output.pos = float4(input.pos.x / (u_screen_size.x * 0.5f) - 1.0f,
-                        1.0f - input.pos.y / (u_screen_size.y * 0.5f),
-                        0.0f, 1.0f);
-    output.uv = input.uv;
-    output.color = input.color;
-    return output;
-}
-)";
-
-static const char *s_osd_ps = R"(
-Texture2D fontAtlas : register(t0);
-SamplerState samPoint : register(s0);
-
-struct PSInput {
-    float4 pos   : SV_POSITION;
-    float2 uv    : TEXCOORD0;
-    float4 color : COLOR0;
-};
-
-float4 main(PSInput input) : SV_TARGET {
-    float alpha = fontAtlas.Sample(samPoint, input.uv).r;
-    return float4(input.color.rgb, input.color.a * alpha);
-}
-)";
 
 OverlayRenderer::OverlayRenderer() = default;
 OverlayRenderer::~OverlayRenderer() {
@@ -380,12 +336,6 @@ void OverlayRenderer::create_pipeline(ID3D12Device *device) {
     D3D12SerializeRootSignature(&sig_desc, D3D_ROOT_SIGNATURE_VERSION_1, &serialized_sig, nullptr);
     device->CreateRootSignature(0, serialized_sig->GetBufferPointer(), serialized_sig->GetBufferSize(), IID_PPV_ARGS(&m_root_sig));
 
-    // Compile shaders
-    ComPtr<ID3DBlob> vs_blob;
-    ComPtr<ID3DBlob> ps_blob;
-    D3DCompile(s_osd_vs, strlen(s_osd_vs), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &vs_blob, nullptr);
-    D3DCompile(s_osd_ps, strlen(s_osd_ps), nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0, &ps_blob, nullptr);
-
     D3D12_INPUT_ELEMENT_DESC input_layout[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 8, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -394,8 +344,8 @@ void OverlayRenderer::create_pipeline(ID3D12Device *device) {
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
     pso_desc.pRootSignature = m_root_sig.Get();
-    pso_desc.VS = { vs_blob->GetBufferPointer(), vs_blob->GetBufferSize() };
-    pso_desc.PS = { ps_blob->GetBufferPointer(), ps_blob->GetBufferSize() };
+    pso_desc.VS = { g_osd_vs_bytecode, g_osd_vs_bytecode_size };
+    pso_desc.PS = { g_osd_ps_bytecode, g_osd_ps_bytecode_size };
 
     D3D12_BLEND_DESC blend_desc = {};
     blend_desc.RenderTarget[0].BlendEnable = TRUE;

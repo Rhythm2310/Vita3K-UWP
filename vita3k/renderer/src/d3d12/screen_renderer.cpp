@@ -1,62 +1,9 @@
 // Vita3K emulator project - Xbox Series S UWP D3D12 Port
 #include <renderer/d3d12/screen_renderer.h>
+#include "screen_shaders_bytecode.h"
 #include <util/log.h>
 
-#include <d3dcompiler.h>
-
 namespace renderer::d3d12 {
-
-// HLSL Shaders for fullscreen blit and FidelityFX CAS sharpening
-static const char *s_screen_vs = R"(
-struct VSOutput {
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-VSOutput main(uint id : SV_VertexID) {
-    VSOutput output;
-    output.uv = float2((id == 2) ? 2.0 : 0.0, (id == 1) ? 2.0 : 0.0);
-    output.pos = float4(output.uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-    return output;
-}
-)";
-
-static const char *s_screen_cas_ps = R"(
-Texture2D srcTex : register(t0);
-SamplerState samLinear : register(s0);
-
-struct PSInput {
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-// FidelityFX CAS (Contrast Adaptive Sharpening) dynamic-resolution upscaler
-float4 main(PSInput input) : SV_TARGET {
-    float2 texCoord = input.uv;
-    
-    uint width, height;
-    srcTex.GetDimensions(width, height);
-    float2 invSize = float2(1.0 / max(float(width), 1.0), 1.0 / max(float(height), 1.0));
-
-    // Sample center and 4 cross neighbors dynamically scaled to render resolution
-    float3 c = srcTex.Sample(samLinear, texCoord).rgb;
-    float3 a = srcTex.Sample(samLinear, texCoord + float2(0.0, -invSize.y)).rgb;
-    float3 b = srcTex.Sample(samLinear, texCoord + float2(-invSize.x, 0.0)).rgb;
-    float3 d = srcTex.Sample(samLinear, texCoord + float2(invSize.x, 0.0)).rgb;
-    float3 e = srcTex.Sample(samLinear, texCoord + float2(0.0, invSize.y)).rgb;
-
-    // Min and max of neighbors
-    float3 minColor = min(c, min(min(a, b), min(d, e)));
-    float3 maxColor = max(c, max(max(a, b), max(d, e)));
-
-    // Adaptive sharpening weight
-    const float sharpness = 0.5; // Optimal sharpening ratio
-    float3 w = -saturate(min(minColor, 1.0 - maxColor) / max(maxColor, 0.0001)) * sharpness;
-    float3 output = (c + (a + b + d + e) * w) / (1.0 + 4.0 * w);
-
-    return float4(saturate(output), 1.0);
-}
-)";
 
 static ComPtr<ID3D12RootSignature> s_screen_root_sig;
 static ComPtr<ID3D12PipelineState> s_screen_pso;
@@ -100,27 +47,10 @@ bool ScreenRenderer::init(ID3D12Device *device, DXGI_FORMAT target_format) {
     hr = device->CreateRootSignature(0, serialized_sig->GetBufferPointer(), serialized_sig->GetBufferSize(), IID_PPV_ARGS(&s_screen_root_sig));
     if (FAILED(hr)) return false;
 
-    // Compile VS and PS
-    ComPtr<ID3DBlob> vs_blob;
-    ComPtr<ID3DBlob> ps_blob;
-    ComPtr<ID3DBlob> error_blob;
-
-    hr = D3DCompile(s_screen_vs, strlen(s_screen_vs), nullptr, nullptr, nullptr, "main", "vs_5_0", 0, 0, &vs_blob, &error_blob);
-    if (FAILED(hr)) {
-        if (error_blob) LOG_ERROR("Screen VS error: {}", (char *)error_blob->GetBufferPointer());
-        return false;
-    }
-
-    hr = D3DCompile(s_screen_cas_ps, strlen(s_screen_cas_ps), nullptr, nullptr, nullptr, "main", "ps_5_0", 0, 0, &ps_blob, &error_blob);
-    if (FAILED(hr)) {
-        if (error_blob) LOG_ERROR("Screen PS error: {}", (char *)error_blob->GetBufferPointer());
-        return false;
-    }
-
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
     pso_desc.pRootSignature = s_screen_root_sig.Get();
-    pso_desc.VS = { vs_blob->GetBufferPointer(), vs_blob->GetBufferSize() };
-    pso_desc.PS = { ps_blob->GetBufferPointer(), ps_blob->GetBufferSize() };
+    pso_desc.VS = { g_screen_vs_bytecode, g_screen_vs_bytecode_size };
+    pso_desc.PS = { g_screen_cas_ps_bytecode, g_screen_cas_ps_bytecode_size };
 
     D3D12_BLEND_DESC blend_desc = {};
     blend_desc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
@@ -143,7 +73,7 @@ bool ScreenRenderer::init(ID3D12Device *device, DXGI_FORMAT target_format) {
         return false;
     }
 
-    LOG_INFO("ScreenRenderer initialized with FidelityFX CAS upscaling");
+    LOG_INFO("ScreenRenderer initialized with FidelityFX CAS upscaling (Precompiled DXBC Bytecode)");
     return true;
 }
 

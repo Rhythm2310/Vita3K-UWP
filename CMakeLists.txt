@@ -61,6 +61,9 @@ if(MSVC)
 	string(REPLACE "/Zi" "/Z7" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 	string(REPLACE "/Zi" "/Z7" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
 
+	# Multi-threaded compilation for fast GitHub Actions CI builds
+	add_compile_options("/MP")
+
 	# Xbox Series S & Windows x64 Release Optimization: AVX2, intrinsic functions, favor fast code
 	add_compile_options("$<$<CONFIG:Release>:/O2>")
 	add_compile_options("$<$<CONFIG:Release>:/Oi>")
