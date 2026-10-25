@@ -54,12 +54,12 @@
   </Applications>
 
   <Capabilities>
-    <!-- Code generation capability is required for Dynarmic JIT dynamic code generation on Xbox -->
-    <DeviceCapability Name="codeGeneration" />
     <Capability Name="internetClient" />
     <!-- Expanded resources unlocks up to ~5GB of RAM on Xbox Series S instead of 1GB limit -->
     <rescap:Capability Name="expandedResources" />
     <!-- Broad file system access to allow accessing USB drives and storage folders -->
     <rescap:Capability Name="broadFileSystemAccess" />
+    <!-- Code generation capability is required for Dynarmic JIT dynamic code generation on Xbox -->
+    <DeviceCapability Name="codeGeneration" />
   </Capabilities>
 </Package>

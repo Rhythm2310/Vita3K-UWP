@@ -132,8 +132,8 @@ jobs:
           Export-Certificate -Cert $cert -FilePath $certPath
           Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $password
           
-          # Locate MakeAppx and SignTool in Windows SDK
-          $sdkBin = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "MakeAppx.exe" -Recurse | Select-Object -First 1).DirectoryName
+          # Locate MakeAppx and SignTool in Windows SDK (latest x64)
+          $sdkBin = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "MakeAppx.exe" -Recurse | Where-Object { $_.FullName -match 'x64' } | Sort-Object FullName -Descending | Select-Object -First 1).DirectoryName
           Write-Host "Found Windows SDK tools at: $sdkBin"
           
           # Pack MSIX
