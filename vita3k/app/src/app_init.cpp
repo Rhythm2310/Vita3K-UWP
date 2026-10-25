@@ -17,6 +17,11 @@
 
 #include <app/functions.h>
 
+#if defined(_WIN32)
+#include <winrt/base.h>
+#include <winrt/Windows.Storage.h>
+#endif
+
 #include <audio/state.h>
 #include <camera/state.h>
 #include <compat/state.h>
@@ -254,11 +259,14 @@ bool init_paths(Root &root_paths) {
 #else
     auto sdl_exe_path = SDL_GetBasePath();
     auto exe_path = fs_utils::utf8_to_path(sdl_exe_path);
+    if (sdl_exe_path) {
+        SDL_free(sdl_exe_path);
+    }
 
     root_paths.set_static_assets_path(exe_path);
 
 #ifdef _WIN32
-    auto portable_path = exe_path / "portable" / "";
+    auto portable_path = exe_path.empty() ? fs::path{} : (exe_path / "portable" / "");
 #elif defined(__APPLE__)
     // On Apple platforms, exe_path is "Contents/Resources/" inside the app bundle.
     // An extra parent_path is apparently needed because of the trailing slash.
@@ -274,7 +282,7 @@ bool init_paths(Root &root_paths) {
     }
 #endif
 
-    if (fs::is_directory(portable_path)) {
+    if (!portable_path.empty() && fs::is_directory(portable_path)) {
         portable = true;
         // If a portable directory exists, use it for everything else.
         // Note that vita_fs_path should not be the same as the other paths.
@@ -285,15 +293,39 @@ bool init_paths(Root &root_paths) {
         root_paths.set_cache_path(portable_path / "cache" / "");
         root_paths.set_patch_path(portable_path / "patch" / "");
     } else {
-        // SDL_GetPrefPath is deferred as it creates the directory.
-        // When using a portable directory, it is not needed.
+        fs::path vita_fs_path;
         auto sdl_vita_fs_path = SDL_GetPrefPath(org_name, app_name);
-        auto vita_fs_path = fs_utils::utf8_to_path(sdl_vita_fs_path);
-        SDL_free(sdl_vita_fs_path);
+        if (sdl_vita_fs_path) {
+            vita_fs_path = fs_utils::utf8_to_path(sdl_vita_fs_path);
+            SDL_free(sdl_vita_fs_path);
+        }
 
 #if defined(_WIN32)
-        // In UWP / Windows sandbox, exe install folder is read-only; use writable LocalState (vita_fs_path)
-        exe_path = vita_fs_path;
+        // In UWP / Windows sandbox, query Windows.Storage LocalFolder
+        try {
+            auto local_folder = winrt::Windows::Storage::ApplicationData::Current().LocalFolder();
+            std::wstring local_folder_path = local_folder.Path().c_str();
+            if (!local_folder_path.empty()) {
+                fs::path uwp_local_path = local_folder_path;
+                vita_fs_path = uwp_local_path / "Vita3K" / "";
+                exe_path = uwp_local_path;
+                LOG_INFO("UWP ApplicationData LocalFolder detected: {}", vita_fs_path.string());
+            }
+        } catch (...) {
+            // Unpackaged desktop mode
+        }
+
+        if (vita_fs_path.empty()) {
+            const char *appdata = getenv("APPDATA");
+            if (appdata && *appdata) {
+                vita_fs_path = fs::path(appdata) / "Vita3K" / "Vita3K" / "";
+            } else {
+                vita_fs_path = fs::path("D:\\Vita3K");
+            }
+        }
+        if (exe_path.empty()) {
+            exe_path = vita_fs_path;
+        }
 
         // Xbox Dev Mode USB Storage auto-discovery: check D:\Vita3K and E:\Vita3K
         try {

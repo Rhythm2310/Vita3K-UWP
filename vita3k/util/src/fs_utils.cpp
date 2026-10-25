@@ -39,11 +39,21 @@ std::string path_to_utf8(const fs::path &path) {
 }
 
 fs::path utf8_to_path(const std::string &str) {
+    if (str.empty()) {
+        return fs::path{};
+    }
     if constexpr (sizeof(fs::path::value_type) == sizeof(wchar_t)) {
         return fs::path{ string_utils::utf_to_wide(str) };
     } else {
         return fs::path{ str };
     }
+}
+
+fs::path utf8_to_path(const char *str) {
+    if (!str || !*str) {
+        return fs::path{};
+    }
+    return utf8_to_path(std::string(str));
 }
 
 fs::path path_concat(const fs::path &path1, const fs::path &path2) {

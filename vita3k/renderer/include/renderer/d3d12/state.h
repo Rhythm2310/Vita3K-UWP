@@ -45,6 +45,7 @@ struct D3D12State : public renderer::State {
 
     ScreenRenderer screen_renderer;
     OverlayRenderer overlay_renderer;
+    bool tearing_supported = false;
 
     D3D12State();
     ~D3D12State() override;

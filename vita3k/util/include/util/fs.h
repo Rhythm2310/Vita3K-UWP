@@ -60,6 +60,7 @@ std::string path_to_utf8(const fs::path &path);
  * \return Boost.Filesystem path
  */
 fs::path utf8_to_path(const std::string &str);
+fs::path utf8_to_path(const char *str);
 
 /**
  * \brief Concatenate two Boost.Filesystem paths. Usable to add extension to path.

@@ -179,6 +179,7 @@ target_link_libraries(vita3k PRIVATE
 set_target_properties(vita3k PROPERTIES OUTPUT_NAME Vita3K)
 
 if(WIN32)
+	target_link_libraries(vita3k PRIVATE windowsapp)
 	target_sources(vita3k PRIVATE resource.h Vita3K.ico Vita3K.rc Windows.manifest)
 	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT vita3k)
 	add_custom_command(

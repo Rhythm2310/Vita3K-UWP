@@ -151,6 +151,14 @@ bool D3D12State::create(std::unique_ptr<renderer::State> &state, const Config &c
     }
 
     if (window_handle) {
+        ComPtr<IDXGIFactory5> factory5;
+        if (SUCCEEDED(dxgi_factory.As(&factory5))) {
+            BOOL allow_tearing = FALSE;
+            if (SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allow_tearing, sizeof(allow_tearing)))) {
+                tearing_supported = (allow_tearing == TRUE);
+            }
+        }
+
         DXGI_SWAP_CHAIN_DESC1 sc_desc = {};
         sc_desc.Width = 1920;
         sc_desc.Height = 1080;
@@ -162,7 +170,9 @@ bool D3D12State::create(std::unique_ptr<renderer::State> &state, const Config &c
         sc_desc.Scaling = DXGI_SCALING_STRETCH;
         sc_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
         sc_desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-        sc_desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        if (tearing_supported) {
+            sc_desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        }
 
         ComPtr<IDXGISwapChain1> sc1;
         hr = dxgi_factory->CreateSwapChainForCoreWindow(
@@ -172,6 +182,18 @@ bool D3D12State::create(std::unique_ptr<renderer::State> &state, const Config &c
             nullptr,
             &sc1
         );
+        if (FAILED(hr) && (sc_desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING)) {
+            LOG_WARN("CreateSwapChainForCoreWindow failed with ALLOW_TEARING (0x{:08X}), retrying without tearing...", static_cast<uint32_t>(hr));
+            sc_desc.Flags &= ~DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+            tearing_supported = false;
+            hr = dxgi_factory->CreateSwapChainForCoreWindow(
+                command_queue.Get(),
+                reinterpret_cast<IUnknown *>(window_handle),
+                &sc_desc,
+                nullptr,
+                &sc1
+            );
+        }
         if (FAILED(hr)) {
             hr = dxgi_factory->CreateSwapChainForHwnd(
                 command_queue.Get(),
@@ -193,7 +215,7 @@ bool D3D12State::create(std::unique_ptr<renderer::State> &state, const Config &c
                     device->CreateRenderTargetView(back_buffers[i].Get(), nullptr, rtv_handle);
                 }
             }
-            LOG_INFO("D3D12 SwapChain created (1920x1080 FLIP_DISCARD with VRR support)");
+            LOG_INFO("D3D12 SwapChain created (1920x1080 FLIP_DISCARD, VRR: {})", tearing_supported ? "enabled" : "standard vsync");
         }
     }
 
@@ -380,7 +402,7 @@ void D3D12State::render_frame(DisplayState &display, const GxmState &gxm, MemSta
 void D3D12State::swap_window() {
     if (swapchain) {
         UINT sync_interval = overlay_renderer.is_vrr_enabled() ? 0 : 1;
-        UINT flags = (sync_interval == 0) ? DXGI_PRESENT_ALLOW_TEARING : 0;
+        UINT flags = (sync_interval == 0 && tearing_supported) ? DXGI_PRESENT_ALLOW_TEARING : 0;
         swapchain->Present(sync_interval, flags);
     }
     move_to_next_frame();

@@ -21,7 +21,7 @@ if(USE_DISCORD_RICH_PRESENCE)
 endif()
 target_link_libraries(app PRIVATE audio camera config ctrl dialog display gdbstub gxm ime io mem modules motion net ngs np patch regmgr renderer touch SDL3::SDL3 pugixml::pugixml compat packages http)
 if(WIN32)
-	target_link_libraries(app PRIVATE dwmapi)
+	target_link_libraries(app PRIVATE dwmapi windowsapp)
 endif()
 
 if (LINUX)
